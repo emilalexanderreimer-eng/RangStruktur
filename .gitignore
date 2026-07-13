@@ -1,0 +1,12 @@
+# Build-Artefakte
+build/
+dist/
+__pycache__/
+*.spec
+
+# Programme nicht ins Repo (gibt es als GitHub-Release)
+*.exe
+
+# Persönliche Exporte / eigene Daten
+*.png
+*.json

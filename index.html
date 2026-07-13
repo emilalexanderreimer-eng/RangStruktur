@@ -1,0 +1,1103 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rangstruktur</title>
+<style>
+:root{
+  --bg:#F2F4F7; --surface:#FFFFFF; --ink:#1C2530; --ink-soft:#5A6B7E;
+  --line:#D4DBE4; --accent:#3E6FA8; --accent-ink:#FFFFFF;
+  --edge:#9FAEC0; --danger:#B0483E;
+  --lvl0:#3E6FA8; --lvl1:#4E8D7C; --lvl2:#A8783E; --lvl3:#7C5FA0; --lvl4:#B05A6E; --lvl5:#5F7D5A;
+  --shadow:0 1px 3px rgba(28,37,48,.10), 0 4px 14px rgba(28,37,48,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#151A21; --surface:#1F2630; --ink:#E4EAF1; --ink-soft:#94A3B5;
+    --line:#333E4C; --accent:#6FA0D6; --accent-ink:#12161C;
+    --edge:#4A5868; --danger:#D07A70;
+    --lvl0:#6FA0D6; --lvl1:#72B8A3; --lvl2:#CFA064; --lvl3:#A78BC9; --lvl4:#D3808F; --lvl5:#8CAF85;
+    --shadow:0 1px 3px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.25);
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  background:var(--bg); color:var(--ink);
+  display:flex; flex-direction:column; overflow:hidden;
+  -webkit-user-select:none; user-select:none;
+}
+/* ── Toolbar ─────────────────────────── */
+header{
+  flex:0 0 auto; display:flex; align-items:center; gap:8px;
+  padding:10px 14px; background:var(--surface);
+  border-bottom:1px solid var(--line);
+  flex-wrap:wrap;
+}
+header h1{
+  font-size:13px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+  margin:0 10px 0 0; color:var(--ink);
+}
+header h1 span{color:var(--accent)}
+.btn{
+  font:inherit; font-size:13px; font-weight:500;
+  padding:6px 12px; border-radius:6px; cursor:pointer;
+  background:var(--surface); color:var(--ink);
+  border:1px solid var(--line);
+}
+.btn:hover{border-color:var(--accent); color:var(--accent)}
+.btn:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+.btn:disabled{opacity:.4; cursor:default; pointer-events:none}
+.btn.primary{background:var(--accent); color:var(--accent-ink); border-color:var(--accent)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.danger:hover{border-color:var(--danger); color:var(--danger)}
+.sep{width:1px; height:22px; background:var(--line); margin:0 4px}
+.spacer{flex:1}
+/* ── Canvas ──────────────────────────── */
+#stage{flex:1; position:relative; overflow:hidden; cursor:grab; touch-action:none;
+  background-image:radial-gradient(var(--line) 1px, transparent 1px);
+  background-size:26px 26px;
+}
+#stage.panning{cursor:grabbing}
+#world{position:absolute; top:0; left:0; transform-origin:0 0}
+#edges{position:absolute; top:0; left:0; overflow:visible; pointer-events:none}
+#edges path{fill:none; stroke:var(--edge); stroke-width:1.5px}
+/* ── Nodes ───────────────────────────── */
+.node{
+  position:absolute; display:flex; align-items:stretch;
+  min-width:120px; max-width:230px;
+  background:var(--surface); border:1px solid var(--line); border-radius:7px;
+  box-shadow:var(--shadow); cursor:pointer;
+}
+.node .stripe{flex:0 0 4px; border-radius:6px 0 0 6px; background:var(--lvl-color,var(--accent))}
+.node .body{padding:8px 12px 9px; min-width:0; flex:1}
+.node .rank{
+  font-size:9.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--lvl-color,var(--accent)); margin-bottom:2px; white-space:nowrap;
+  outline:none; min-height:1.2em;
+}
+.node .rank[contenteditable="true"]{cursor:text; -webkit-user-select:text; user-select:text}
+.node .label{
+  font-size:13.5px; font-weight:600; line-height:1.3;
+  overflow-wrap:break-word; outline:none; min-height:1.3em;
+}
+.node .label[contenteditable="true"]{cursor:text; -webkit-user-select:text; user-select:text}
+.node.selected{border-color:var(--accent); box-shadow:0 0 0 2px var(--accent), var(--shadow)}
+.node.droptarget{border-color:var(--lvl1); box-shadow:0 0 0 2px var(--lvl1), var(--shadow)}
+.node.dragging{opacity:.45}
+.node .collapse{
+  position:absolute; left:50%; bottom:-11px; transform:translateX(-50%);
+  width:20px; height:20px; border-radius:50%;
+  background:var(--surface); border:1px solid var(--edge); color:var(--ink-soft);
+  font-size:10px; font-weight:700; line-height:18px; text-align:center;
+  cursor:pointer; padding:0;
+}
+.node .collapse:hover{border-color:var(--accent); color:var(--accent)}
+/* ── Anmerkungen: Textfelder & Pfeile ── */
+#anno{position:absolute; top:0; left:0; overflow:visible; pointer-events:none}
+#anno .arrow{stroke:var(--accent); stroke-width:2; fill:none; marker-end:url(#ah); pointer-events:stroke; cursor:pointer}
+#anno .arrow.selected{stroke-width:3}
+#anno .arrow.preview{stroke-dasharray:5 4}
+#anno marker path{fill:var(--accent); stroke:none}
+#anno .handle{fill:var(--surface); stroke:var(--accent); stroke-width:1.5; pointer-events:all; cursor:move}
+#notesLayer{position:absolute; top:0; left:0}
+.note{
+  position:absolute; background:var(--surface); border:1px dashed var(--edge); border-radius:6px;
+  padding:8px 20px 14px 10px; cursor:pointer; box-shadow:var(--shadow);
+}
+.note .ntext{
+  font-size:13px; line-height:1.4; color:var(--ink); outline:none;
+  white-space:pre-wrap; overflow-wrap:break-word; width:100%; height:100%; overflow:hidden;
+}
+.note .ntext[contenteditable="true"]{cursor:text; -webkit-user-select:text; user-select:text}
+.note.selected{border-style:solid; border-color:var(--accent); box-shadow:0 0 0 1px var(--accent), var(--shadow)}
+.note .resize{
+  position:absolute; right:2px; bottom:2px; width:14px; height:14px; cursor:nwse-resize;
+  border-right:2px solid var(--edge); border-bottom:2px solid var(--edge); border-radius:0 0 4px 0;
+}
+.note.selected .resize{border-color:var(--accent)}
+.note.droptarget{border-style:solid; border-color:var(--lvl1); box-shadow:0 0 0 2px var(--lvl1), var(--shadow)}
+#stage.arrowmode{cursor:crosshair}
+.btn.active{background:var(--accent); color:var(--accent-ink); border-color:var(--accent)}
+#ghost{
+  position:fixed; pointer-events:none; z-index:50; display:none;
+  padding:6px 12px; border-radius:6px; font-size:13px; font-weight:600;
+  background:var(--accent); color:var(--accent-ink); box-shadow:var(--shadow);
+  max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+/* ── Footer ──────────────────────────── */
+footer{
+  flex:0 0 auto; display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  padding:7px 14px; background:var(--surface); border-top:1px solid var(--line);
+  font-size:11.5px; color:var(--ink-soft); font-variant-numeric:tabular-nums;
+}
+footer kbd{
+  font-family:inherit; font-size:10.5px; padding:1px 5px; border-radius:4px;
+  border:1px solid var(--line); background:var(--bg); color:var(--ink);
+}
+#stats{margin-left:auto; letter-spacing:.03em}
+@media (prefers-reduced-motion: no-preference){
+  .node{transition:box-shadow .12s ease, border-color .12s ease}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Rang<span>struktur</span></h1>
+  <button class="btn primary" id="bAddChild" title="Untergebenen hinzufügen (Tab)">+ Untergeordnet</button>
+  <button class="btn" id="bAddSib" title="Gleichrangigen hinzufügen (Enter)">+ Gleichrangig</button>
+  <button class="btn danger" id="bDelete" title="Zweig löschen (Entf)">Löschen</button>
+  <div class="sep"></div>
+  <button class="btn" id="bNote" title="Freies Textfeld einfügen (verschieben: ziehen, Größe: Ecke unten rechts)">+ Textfeld</button>
+  <button class="btn" id="bArrow" title="Pfeil verbinden: aktivieren, dann von einer Karte / einem Textfeld zum Ziel ziehen">↗ Pfeil</button>
+  <div class="sep"></div>
+  <button class="btn" id="bUndo" title="Rückgängig (Strg+Z)">↶ Rückgängig</button>
+  <button class="btn" id="bFit" title="Ansicht einpassen">Einpassen</button>
+  <div class="spacer"></div>
+  <button class="btn" id="bExport">Export JSON</button>
+  <button class="btn" id="bPng" title="Als PNG-Bild speichern">PNG</button>
+  <button class="btn" id="bImport">Import</button>
+  <button class="btn danger" id="bNew">Neu</button>
+  <input type="file" id="fileIn" accept=".json,application/json" hidden>
+</header>
+
+<div id="stage">
+  <div id="world">
+    <svg id="edges"></svg>
+    <div id="nodes"></div>
+    <svg id="anno"></svg>
+    <div id="notesLayer"></div>
+  </div>
+</div>
+<div id="ghost"></div>
+
+<footer>
+  <span><kbd>Klick</kbd> auswählen, nochmal klicken: bearbeiten</span>
+  <span><kbd>Tab</kbd> untergeordnet</span>
+  <span><kbd>Enter</kbd> gleichrangig</span>
+  <span><kbd>Entf</kbd> löschen</span>
+  <span><kbd>Ziehen</kbd> Knoten umhängen · Fläche verschieben</span>
+  <span><kbd>Scrollen</kbd> zoomen</span>
+  <span id="stats"></span>
+</footer>
+
+<script>
+"use strict";
+const STORE_KEY = "rangstruktur-v1";
+const H_GAP = 28, V_GAP = 64;
+
+let root, selectedId = null, editingId = null;
+let notes = [], arrows = [];
+let nodeRects = new Map();   // Weltkoordinaten der sichtbaren Namenskarten (id -> {x,y,w,h})
+let annoSel = null;          // {type:"note"|"arrow", id} – ausgewähltes Textfeld / Pfeil
+let editingNoteId = null;
+let arrowMode = false;
+let undoStack = [];
+let view = { x: 0, y: 0, k: 1 };
+
+const $ = id => document.getElementById(id);
+const stage = $("stage"), world = $("world"), nodesEl = $("nodes"), edgesEl = $("edges"), ghost = $("ghost");
+const annoEl = $("anno"), notesLayer = $("notesLayer");
+
+const uid = () => Math.random().toString(36).slice(2, 10);
+const mkNode = (title, name) => ({ id: uid(), title, name, collapsed: false, children: [] });
+
+/* Alte Speicherstände (nur "text") auf Titel+Name heben */
+function migrate(n){
+  if (typeof n.text === "string" && typeof n.name !== "string"){ n.name = n.text; delete n.text; }
+  if (typeof n.title !== "string") n.title = "Titel";
+  if (typeof n.name !== "string") n.name = "Name";
+  (n.children || []).forEach(migrate);
+}
+
+/* Host-Anbindung: in der Desktop-App speichert Python in eine Datei,
+   im Browser fällt alles auf localStorage / Datei-Dialoge zurück. */
+const hostApi = () => (window.pywebview && window.pywebview.api) || null;
+
+function defaultTree(){
+  const r = mkNode("Anführer", "Emil");
+  const a = mkNode("Stellvertreter", "Name"), b = mkNode("Stellvertreter", "Name");
+  a.children.push(mkNode("Mitglied", "Name"), mkNode("Mitglied", "Name"));
+  b.children.push(mkNode("Mitglied", "Name"));
+  r.children.push(a, b);
+  return r;
+}
+
+/* ── Baum-Hilfen ── */
+function findNode(id, n = root){
+  if (n.id === id) return n;
+  for (const c of n.children){ const f = findNode(id, c); if (f) return f; }
+  return null;
+}
+function findParent(id, n = root){
+  for (const c of n.children){
+    if (c.id === id) return n;
+    const f = findParent(id, c); if (f) return f;
+  }
+  return null;
+}
+function isDescendant(maybeChildId, ancestor){
+  if (ancestor.id === maybeChildId) return true;
+  return ancestor.children.some(c => isDescendant(maybeChildId, c));
+}
+function countNodes(n = root){ return 1 + n.children.reduce((s,c) => s + countNodes(c), 0); }
+function maxDepth(n = root, d = 1){ return n.children.length ? Math.max(...n.children.map(c => maxDepth(c, d+1))) : d; }
+
+/* ── Persistenz / Undo ── */
+function save(){
+  const text = JSON.stringify({ root, view, notes, arrows });
+  const api = hostApi();
+  if (api){ api.save_data(text).catch(() => {}); }
+  else { try { localStorage.setItem(STORE_KEY, text); } catch(e){} }
+}
+function pushUndo(){
+  undoStack.push(JSON.stringify({ root, notes, arrows }));
+  if (undoStack.length > 100) undoStack.shift();
+  $("bUndo").disabled = false;
+}
+function undo(){
+  if (!undoStack.length) return;
+  const s = JSON.parse(undoStack.pop());
+  root = s.root;
+  notes = s.notes || [];
+  arrows = s.arrows || [];
+  if (selectedId && !findNode(selectedId)) selectedId = root.id;
+  if (annoSel && !findNote(annoSel.id) && !findArrow(annoSel.id)) annoSel = null;
+  $("bUndo").disabled = !undoStack.length;
+  render(); renderAnno(); save();
+}
+
+/* ── Layout (zwei Durchgänge: messen, dann setzen) ── */
+function render(){
+  nodesEl.innerHTML = "";
+  const els = new Map();
+  (function build(n, depth){
+    const el = document.createElement("div");
+    el.className = "node";
+    el.dataset.id = n.id;
+    el.style.setProperty("--lvl-color", `var(--lvl${depth % 6})`);
+    if (n.id === selectedId) el.classList.add("selected");
+    el.innerHTML = `<div class="stripe"></div><div class="body"><div class="rank"></div><div class="label"></div></div>`;
+    el.querySelector(".rank").textContent = n.title;
+    el.querySelector(".label").textContent = n.name;
+    if (n.children.length){
+      const btn = document.createElement("button");
+      btn.className = "collapse";
+      btn.textContent = n.collapsed ? n.children.length : "–";
+      btn.title = n.collapsed ? "Zweig aufklappen" : "Zweig einklappen";
+      btn.addEventListener("pointerdown", e => e.stopPropagation());
+      btn.addEventListener("click", e => {
+        e.stopPropagation();
+        n.collapsed = !n.collapsed;
+        render(); save();
+      });
+      el.appendChild(btn);
+    }
+    nodesEl.appendChild(el);
+    els.set(n.id, el);
+    if (!n.collapsed) n.children.forEach(c => build(c, depth + 1));
+  })(root, 0);
+
+  // Messen
+  const size = new Map();
+  els.forEach((el, id) => size.set(id, { w: el.offsetWidth, h: el.offsetHeight }));
+
+  // Zeilenhöhe pro Ebene
+  const levelH = [];
+  (function depths(n, d){
+    if (!els.has(n.id)) return;
+    levelH[d] = Math.max(levelH[d] || 0, size.get(n.id).h);
+    if (!n.collapsed) n.children.forEach(c => depths(c, d + 1));
+  })(root, 0);
+  const levelY = [0];
+  for (let i = 1; i < levelH.length; i++) levelY[i] = levelY[i-1] + levelH[i-1] + V_GAP;
+
+  // Teilbaum-Breiten
+  const subW = new Map();
+  (function widths(n){
+    const own = size.get(n.id).w;
+    if (n.collapsed || !n.children.length){ subW.set(n.id, own); return own; }
+    let sum = 0;
+    n.children.forEach((c, i) => { sum += widths(c) + (i ? H_GAP : 0); });
+    const w = Math.max(own, sum);
+    subW.set(n.id, w);
+    return w;
+  })(root);
+
+  // Positionen
+  const pos = new Map();
+  (function place(n, x, d){
+    const w = subW.get(n.id), own = size.get(n.id);
+    pos.set(n.id, { x: x + (w - own.w) / 2, y: levelY[d], w: own.w, h: own.h });
+    if (n.collapsed || !n.children.length) return;
+    let cx = x + (w - (n.children.reduce((s,c,i) => s + subW.get(c.id) + (i ? H_GAP : 0), 0))) / 2;
+    n.children.forEach(c => { place(c, cx, d + 1); cx += subW.get(c.id) + H_GAP; });
+  })(root, 0, 0);
+
+  els.forEach((el, id) => {
+    const p = pos.get(id);
+    el.style.left = p.x + "px";
+    el.style.top = p.y + "px";
+  });
+  nodeRects = pos;
+
+  // Kanten (Winkel-Verbinder)
+  let paths = "";
+  (function edges(n){
+    if (n.collapsed) return;
+    const p = pos.get(n.id);
+    n.children.forEach(c => {
+      const q = pos.get(c.id);
+      const x1 = p.x + p.w / 2, y1 = p.y + p.h;
+      const x2 = q.x + q.w / 2, y2 = q.y;
+      const my = y1 + (y2 - y1) / 2;
+      paths += `<path d="M ${x1} ${y1} L ${x1} ${my} L ${x2} ${my} L ${x2} ${y2}"/>`;
+      edges(c);
+    });
+  })(root);
+  const totalW = subW.get(root.id), totalH = levelY[levelY.length-1] + levelH[levelH.length-1];
+  edgesEl.setAttribute("width", totalW);
+  edgesEl.setAttribute("height", totalH);
+  edgesEl.innerHTML = paths;
+
+  $("stats").textContent = countNodes() + " Positionen · " + maxDepth() + " Ebenen";
+  $("bDelete").disabled = annoSel ? false : (selectedId === root.id || !selectedId);
+  $("bAddSib").disabled = selectedId === root.id || !selectedId;
+  renderAnno(); // Kartenpositionen haben sich evtl. geändert – gebundene Pfeile nachführen
+}
+
+function applyView(){
+  world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
+}
+function fitView(){
+  const w = edgesEl.width.baseVal.value || 300, h = edgesEl.height.baseVal.value || 200;
+  const sw = stage.clientWidth, sh = stage.clientHeight;
+  view.k = Math.min(1.25, Math.max(0.15, Math.min((sw - 80) / w, (sh - 80) / h)));
+  view.x = (sw - w * view.k) / 2;
+  view.y = Math.max(30, (sh - h * view.k) / 2);
+  applyView(); save();
+}
+
+/* ── Aktionen ── */
+function select(id){
+  selectedId = id;
+  nodesEl.querySelectorAll(".node").forEach(el =>
+    el.classList.toggle("selected", el.dataset.id === id));
+  $("bDelete").disabled = annoSel ? false : (id === root.id || !id);
+  $("bAddSib").disabled = id === root.id || !id;
+}
+function addChild(){
+  const n = selectedId ? findNode(selectedId) : root;
+  if (!n) return;
+  pushUndo();
+  const c = mkNode("Titel", "Name");
+  n.collapsed = false;
+  n.children.push(c);
+  selectedId = c.id;
+  render(); save();
+  startEdit(c.id, "title");
+}
+function addSibling(){
+  if (!selectedId || selectedId === root.id) return;
+  const parent = findParent(selectedId);
+  if (!parent) return;
+  pushUndo();
+  const c = mkNode("Titel", "Name");
+  const i = parent.children.findIndex(x => x.id === selectedId);
+  parent.children.splice(i + 1, 0, c);
+  selectedId = c.id;
+  render(); save();
+  startEdit(c.id, "title");
+}
+function deleteSelected(){
+  if (!selectedId || selectedId === root.id) return;
+  const n = findNode(selectedId);
+  const sub = countNodes(n);
+  if (sub > 1 && !confirm(`Diesen Zweig mit ${sub} Positionen löschen?`)) return;
+  pushUndo();
+  const parent = findParent(selectedId);
+  parent.children = parent.children.filter(c => c.id !== selectedId);
+  selectedId = parent.id;
+  render(); save();
+}
+function fieldEl(id, field){
+  return nodesEl.querySelector(`.node[data-id="${id}"] .${field === "title" ? "rank" : "label"}`);
+}
+function focusField(id, field){
+  const el = fieldEl(id, field);
+  if (!el) return;
+  el.focus();
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const sel = getSelection();
+  sel.removeAllRanges(); sel.addRange(range);
+}
+function startEdit(id, field){
+  const tEl = fieldEl(id, "title"), nEl = fieldEl(id, "name");
+  if (!tEl || !nEl) return;
+  editingId = id;
+  tEl.contentEditable = "true";
+  nEl.contentEditable = "true";
+  focusField(id, field || "title");
+}
+function finishEdit(commit){
+  if (!editingId) return;
+  const n = findNode(editingId);
+  const id = editingId;
+  const tEl = fieldEl(id, "title"), nEl = fieldEl(id, "name");
+  editingId = null;
+  if (n && tEl && nEl){
+    const title = tEl.textContent.trim(), name = nEl.textContent.trim();
+    if (commit && ((title && title !== n.title) || (name && name !== n.name))){
+      pushUndo();
+      if (title) n.title = title;
+      if (name) n.name = name;
+    }
+    tEl.contentEditable = "false";
+    nEl.contentEditable = "false";
+  }
+  render(); save();
+  select(id);
+}
+
+/* ── Textfelder & Pfeile ── */
+const findNote = id => notes.find(n => n.id === id);
+const findArrow = id => arrows.find(a => a.id === id);
+
+/* Rechteck eines Ankers in Weltkoordinaten.
+   undefined = Element existiert nicht mehr, null = nur gerade unsichtbar (eingeklappt) */
+function anchorRect(ref){
+  if (ref.type === "node"){
+    if (!findNode(ref.id)) return undefined;
+    return nodeRects.get(ref.id) || null;
+  }
+  const nt = findNote(ref.id);
+  return nt ? { x: nt.x, y: nt.y, w: nt.w, h: nt.h } : undefined;
+}
+/* Schnittpunkt der Linie Rechteckmitte -> (tx,ty) mit dem Rechteckrand */
+function edgePoint(rect, tx, ty){
+  const cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2;
+  const dx = tx - cx, dy = ty - cy;
+  if (!dx && !dy) return { x: cx, y: cy };
+  const sx = dx ? (rect.w / 2) / Math.abs(dx) : Infinity;
+  const sy = dy ? (rect.h / 2) / Math.abs(dy) : Infinity;
+  const s = Math.min(sx, sy);
+  return { x: cx + dx * s, y: cy + dy * s };
+}
+/* Endpunkte eines gebundenen Pfeils: Rand zu Rand, mit kleinem Abstand */
+function arrowPoints(a){
+  const ra = anchorRect(a.from), rb = anchorRect(a.to);
+  if (!ra || !rb) return null;
+  const p1 = edgePoint(ra, rb.x + rb.w / 2, rb.y + rb.h / 2);
+  const p2 = edgePoint(rb, ra.x + ra.w / 2, ra.y + ra.h / 2);
+  const dx = p2.x - p1.x, dy = p2.y - p1.y, len = Math.hypot(dx, dy) || 1;
+  if (len < 14) return null; // Elemente überlappen – kein sinnvoller Pfeil
+  return { x1: p1.x + dx / len * 5, y1: p1.y + dy / len * 5,
+           x2: p2.x - dx / len * 7, y2: p2.y - dy / len * 7 };
+}
+
+function renderAnno(){
+  notesLayer.innerHTML = "";
+  notes.forEach(nt => {
+    const sel = annoSel && annoSel.type === "note" && annoSel.id === nt.id;
+    const el = document.createElement("div");
+    el.className = "note" + (sel ? " selected" : "");
+    el.dataset.id = nt.id;
+    el.style.left = nt.x + "px";
+    el.style.top = nt.y + "px";
+    el.style.width = nt.w + "px";
+    el.style.height = nt.h + "px";
+    const tx = document.createElement("div");
+    tx.className = "ntext";
+    tx.textContent = nt.text;
+    el.appendChild(tx);
+    const rs = document.createElement("div");
+    rs.className = "resize";
+    el.appendChild(rs);
+    notesLayer.appendChild(el);
+  });
+  let svg = `<defs><marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9 z"/></marker></defs>`;
+  // Verwaiste Verbindungen entfernen (Karte oder Textfeld wurde gelöscht)
+  arrows = arrows.filter(a => !a.from ||
+    (anchorRect(a.from) !== undefined && anchorRect(a.to) !== undefined));
+  arrows.forEach(a => {
+    const sel = annoSel && annoSel.type === "arrow" && annoSel.id === a.id;
+    let p;
+    if (a.from){
+      p = arrowPoints(a);
+      if (!p) return; // Endpunkt gerade eingeklappt/unsichtbar
+    } else {
+      p = { x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2 };
+    }
+    svg += `<path class="arrow${sel ? " selected" : ""}" data-id="${a.id}" d="M ${p.x1} ${p.y1} L ${p.x2} ${p.y2}"/>`;
+    if (sel && !a.from){ // nur freie Alt-Pfeile haben verschiebbare Endpunkte
+      svg += `<circle class="handle" data-id="${a.id}" data-end="1" cx="${p.x1}" cy="${p.y1}" r="6"/>`;
+      svg += `<circle class="handle" data-id="${a.id}" data-end="2" cx="${p.x2}" cy="${p.y2}" r="6"/>`;
+    }
+  });
+  // Vorschau während ein neuer Pfeil gezogen wird
+  if (drag && drag.bind && drag.cur){
+    const ra = anchorRect(drag.bind);
+    if (ra){
+      const p1 = edgePoint(ra, drag.cur.x, drag.cur.y);
+      svg += `<path class="arrow preview" d="M ${p1.x} ${p1.y} L ${drag.cur.x} ${drag.cur.y}"/>`;
+    }
+  }
+  annoEl.innerHTML = svg;
+}
+function selectAnno(sel){
+  annoSel = sel;
+  if (sel) select(null); else select(selectedId);
+  renderAnno();
+}
+function deleteAnno(){
+  if (!annoSel) return;
+  pushUndo();
+  if (annoSel.type === "note") notes = notes.filter(n => n.id !== annoSel.id);
+  else arrows = arrows.filter(a => a.id !== annoSel.id);
+  annoSel = null;
+  select(selectedId);
+  renderAnno(); save();
+}
+function addNote(){
+  pushUndo();
+  const r = stage.getBoundingClientRect();
+  const c = toWorld(r.left + r.width / 2, r.top + r.height / 2);
+  const nt = { id: uid(), x: c.x - 90, y: c.y - 40, w: 180, h: 80, text: "Notiz" };
+  notes.push(nt);
+  selectAnno({ type: "note", id: nt.id });
+  save();
+  startNoteEdit(nt.id);
+}
+function startNoteEdit(id){
+  const el = notesLayer.querySelector(`.note[data-id="${id}"] .ntext`);
+  if (!el) return;
+  editingNoteId = id;
+  el.contentEditable = "true";
+  el.focus();
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const sel = getSelection();
+  sel.removeAllRanges(); sel.addRange(range);
+}
+function finishNoteEdit(commit){
+  if (!editingNoteId) return;
+  const nt = findNote(editingNoteId);
+  const el = notesLayer.querySelector(`.note[data-id="${editingNoteId}"] .ntext`);
+  editingNoteId = null;
+  if (nt && el){
+    const t = el.innerText.replace(/\n+$/, "");
+    if (commit && t !== nt.text){ pushUndo(); nt.text = t; }
+    el.contentEditable = "false";
+  }
+  renderAnno(); save();
+}
+
+/* ── Zeiger: Auswahl, Drag-Umhängen, Pan ── */
+let drag = null;
+const toWorld = (cx, cy) => {
+  const r = stage.getBoundingClientRect();
+  return { x: (cx - r.left - view.x) / view.k, y: (cy - r.top - view.y) / view.k };
+};
+stage.addEventListener("pointerdown", e => {
+  if (e.button !== 0) return;
+  if (editingId){
+    if (e.target.closest(".label,.rank") && e.target.closest(".node")?.dataset.id === editingId) return;
+    finishEdit(true);
+  }
+  if (editingNoteId){
+    if (e.target.closest(".ntext") && e.target.closest(".note")?.dataset.id === editingNoteId) return;
+    finishNoteEdit(true);
+  }
+  try { stage.setPointerCapture(e.pointerId); } catch(err){}
+  const w = toWorld(e.clientX, e.clientY);
+
+  // Pfeilmodus: von einer Karte / einem Textfeld zum Ziel ziehen
+  if (arrowMode){
+    const srcEl = e.target.closest(".node, .note");
+    if (!srcEl){
+      setArrowMode(false); // Klick ins Leere bricht ab
+      drag = null;
+      return;
+    }
+    drag = { bind: { type: srcEl.classList.contains("node") ? "node" : "note", id: srcEl.dataset.id }, cur: w };
+    renderAnno();
+    return;
+  }
+  // Endpunkt eines ausgewählten Pfeils verschieben
+  const handle = e.target.closest(".handle");
+  if (handle){
+    pushUndo();
+    drag = { arrowEnd: handle.dataset.id, end: handle.dataset.end };
+    return;
+  }
+  // Pfeil anklicken (gebundene folgen ihren Elementen; nur freie Alt-Pfeile sind verschiebbar)
+  const arrowEl = e.target.closest(".arrow");
+  if (arrowEl){
+    const a = findArrow(arrowEl.dataset.id);
+    if (!a) return;
+    selectAnno({ type: "arrow", id: a.id });
+    drag = a.from ? null : { arrowMove: a.id, start: w, orig: { ...a }, moved: false };
+    return;
+  }
+  // Textfeld: auswählen, verschieben, Größe ändern
+  const noteEl = e.target.closest(".note");
+  if (noteEl){
+    const id = noteEl.dataset.id;
+    const nt = findNote(id);
+    const wasSelected = annoSel && annoSel.type === "note" && annoSel.id === id;
+    selectAnno({ type: "note", id });
+    if (e.target.closest(".resize")){
+      drag = { noteResize: id, start: w, orig: { ...nt }, moved: false };
+    } else {
+      drag = { noteMove: id, start: w, orig: { ...nt }, moved: false, wasSelected };
+    }
+    return;
+  }
+  const nodeEl = e.target.closest(".node");
+  if (nodeEl){
+    const id = nodeEl.dataset.id;
+    const wasSelected = selectedId === id;
+    if (annoSel) selectAnno(null);
+    select(id);
+    drag = { id, startX: e.clientX, startY: e.clientY, moved: false, isRoot: id === root.id,
+             wasSelected, field: e.target.closest(".rank") ? "title" : "name" };
+  } else {
+    if (annoSel) selectAnno(null);
+    drag = { pan: true, startX: e.clientX, startY: e.clientY, vx: view.x, vy: view.y };
+    stage.classList.add("panning");
+  }
+});
+stage.addEventListener("pointermove", e => {
+  if (!drag) return;
+  if (drag.pan){
+    view.x = drag.vx + (e.clientX - drag.startX);
+    view.y = drag.vy + (e.clientY - drag.startY);
+    applyView();
+    return;
+  }
+  if (drag.bind || drag.arrowEnd || drag.arrowMove || drag.noteMove || drag.noteResize){
+    const w = toWorld(e.clientX, e.clientY);
+    if (drag.bind){
+      drag.cur = w;
+      renderAnno();
+      nodesEl.querySelectorAll(".droptarget").forEach(el => el.classList.remove("droptarget"));
+      const over = document.elementsFromPoint(e.clientX, e.clientY)
+        .find(el => el.classList?.contains("node") || el.classList?.contains("note"));
+      if (over && over.dataset.id !== drag.bind.id) over.classList.add("droptarget");
+      return;
+    }
+    if (drag.arrowEnd){
+      const a = findArrow(drag.arrowEnd);
+      if (drag.end === "1"){ a.x1 = w.x; a.y1 = w.y; } else { a.x2 = w.x; a.y2 = w.y; }
+      renderAnno(); return;
+    }
+    const dx = w.x - drag.start.x, dy = w.y - drag.start.y;
+    if (!drag.moved && Math.hypot(dx * view.k, dy * view.k) > 4){ drag.moved = true; pushUndo(); }
+    if (!drag.moved) return;
+    if (drag.arrowMove){
+      const a = findArrow(drag.arrowMove), o = drag.orig;
+      a.x1 = o.x1 + dx; a.y1 = o.y1 + dy; a.x2 = o.x2 + dx; a.y2 = o.y2 + dy;
+    } else if (drag.noteMove){
+      const nt = findNote(drag.noteMove);
+      nt.x = drag.orig.x + dx; nt.y = drag.orig.y + dy;
+    } else {
+      const nt = findNote(drag.noteResize);
+      nt.w = Math.max(70, drag.orig.w + dx);
+      nt.h = Math.max(34, drag.orig.h + dy);
+    }
+    renderAnno(); return;
+  }
+  if (!drag.moved && Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) > 6){
+    if (drag.isRoot) { drag = null; return; }
+    drag.moved = true;
+    const n = findNode(drag.id);
+    ghost.textContent = n.title + " · " + n.name;
+    ghost.style.display = "block";
+    nodesEl.querySelector(`.node[data-id="${drag.id}"]`)?.classList.add("dragging");
+  }
+  if (drag.moved){
+    ghost.style.left = (e.clientX + 12) + "px";
+    ghost.style.top = (e.clientY + 12) + "px";
+    const over = document.elementsFromPoint(e.clientX, e.clientY)
+      .find(el => el.classList?.contains("node"));
+    nodesEl.querySelectorAll(".droptarget").forEach(el => el.classList.remove("droptarget"));
+    if (over && over.dataset.id !== drag.id){
+      const dragged = findNode(drag.id);
+      if (!isDescendant(over.dataset.id, dragged)) over.classList.add("droptarget");
+    }
+  }
+});
+stage.addEventListener("pointerup", e => {
+  stage.classList.remove("panning");
+  if (!drag) return;
+  const d = drag; drag = null;
+  ghost.style.display = "none";
+  if (d.pan){ save(); return; }
+  if (d.bind){
+    nodesEl.querySelectorAll(".droptarget").forEach(el => el.classList.remove("droptarget"));
+    const over = document.elementsFromPoint(e.clientX, e.clientY)
+      .find(el => el.classList?.contains("node") || el.classList?.contains("note"));
+    if (over && over.dataset.id !== d.bind.id){
+      pushUndo();
+      const a = { id: uid(), from: d.bind,
+                  to: { type: over.classList.contains("node") ? "node" : "note", id: over.dataset.id } };
+      arrows.push(a);
+      annoSel = { type: "arrow", id: a.id };
+      select(null);
+      save();
+    }
+    setArrowMode(false);
+    renderAnno(); return;
+  }
+  if (d.arrowEnd || d.arrowMove || d.noteResize){ save(); return; }
+  if (d.noteMove){
+    if (!d.moved && d.wasSelected && !editingNoteId){ startNoteEdit(d.noteMove); return; }
+    save(); return;
+  }
+  nodesEl.querySelector(`.node[data-id="${d.id}"]`)?.classList.remove("dragging");
+  // Klick auf bereits ausgewählten Knoten (ohne Ziehen) öffnet die Bearbeitung
+  if (!d.moved && d.wasSelected && !editingId){
+    startEdit(d.id, d.field);
+    return;
+  }
+  const target = nodesEl.querySelector(".droptarget");
+  nodesEl.querySelectorAll(".droptarget").forEach(el => el.classList.remove("droptarget"));
+  if (d.moved && target){
+    const newParent = findNode(target.dataset.id);
+    const dragged = findNode(d.id);
+    if (newParent && dragged && !isDescendant(newParent.id, dragged)){
+      pushUndo();
+      const oldParent = findParent(d.id);
+      oldParent.children = oldParent.children.filter(c => c.id !== d.id);
+      newParent.collapsed = false;
+      newParent.children.push(dragged);
+      render(); save();
+      select(d.id);
+    }
+  }
+});
+stage.addEventListener("pointercancel", () => {
+  stage.classList.remove("panning");
+  ghost.style.display = "none";
+  nodesEl.querySelectorAll(".dragging,.droptarget").forEach(el =>
+    el.classList.remove("dragging","droptarget"));
+  drag = null;
+  renderAnno();
+});
+nodesEl.addEventListener("dblclick", e => {
+  const el = e.target.closest(".node");
+  if (el) startEdit(el.dataset.id, e.target.closest(".rank") ? "title" : "name");
+});
+stage.addEventListener("wheel", e => {
+  e.preventDefault();
+  const k2 = Math.min(2.5, Math.max(0.12, view.k * (e.deltaY < 0 ? 1.12 : 1/1.12)));
+  const r = stage.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  view.x = mx - (mx - view.x) * (k2 / view.k);
+  view.y = my - (my - view.y) * (k2 / view.k);
+  view.k = k2;
+  applyView(); save();
+}, { passive: false });
+
+/* ── Tastatur ── */
+document.addEventListener("keydown", e => {
+  if (editingNoteId){
+    // Enter = Zeilenumbruch im Textfeld; Escape beendet die Bearbeitung
+    if (e.key === "Escape"){ e.preventDefault(); finishNoteEdit(true); }
+    return;
+  }
+  if (editingId){
+    if (e.key === "Enter"){ e.preventDefault(); finishEdit(true); }
+    else if (e.key === "Escape"){ e.preventDefault(); finishEdit(false); }
+    else if (e.key === "Tab"){
+      e.preventDefault();
+      if (document.activeElement === fieldEl(editingId, "title")) focusField(editingId, "name");
+      else finishEdit(true);
+    }
+    return;
+  }
+  if (e.target instanceof Element && e.target.closest("input,button")) {
+    if (e.key !== "Tab") return;
+  }
+  if (e.key === "Tab"){ e.preventDefault(); addChild(); }
+  else if (e.key === "Enter"){ e.preventDefault(); addSibling(); }
+  else if (e.key === "Delete" || e.key === "Backspace"){ e.preventDefault(); if (annoSel) deleteAnno(); else deleteSelected(); }
+  else if (e.key === "F2"){ e.preventDefault(); if (selectedId) startEdit(selectedId, "title"); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z"){ e.preventDefault(); undo(); }
+});
+
+/* ── Import ── */
+function applyImport(text){
+  try {
+    let data = JSON.parse(text);
+    let newNotes = [], newArrows = [];
+    if (data && data.root){
+      // Neues Format: {root, notes, arrows} – alte Exporte sind der Baum direkt
+      newNotes = Array.isArray(data.notes) ? data.notes : [];
+      newArrows = Array.isArray(data.arrows) ? data.arrows : [];
+      data = data.root;
+    }
+    if (!data || (typeof data.name !== "string" && typeof data.text !== "string") || !Array.isArray(data.children))
+      throw new Error("format");
+    pushUndo();
+    (function fix(n){ n.id = n.id || uid(); n.collapsed = !!n.collapsed;
+      n.children = Array.isArray(n.children) ? n.children : [];
+      n.children.forEach(fix); })(data);
+    migrate(data);
+    root = data;
+    notes = newNotes; arrows = newArrows; annoSel = null;
+    selectedId = root.id;
+    render(); renderAnno(); save(); fitView();
+  } catch(err) {
+    alert("Die Datei ist keine gültige Rangstruktur-JSON. Erwartet wird ein Export aus diesem Programm.");
+  }
+}
+
+/* ── PNG-Export: Szene komplett auf ein Canvas zeichnen ── */
+function roundRect(ctx, x, y, w, h, r){
+  if (ctx.roundRect){ ctx.roundRect(x, y, w, h, r); return; }
+  const rr = Array.isArray(r) ? r[0] : r;
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+function wrapText(ctx, text, maxW){
+  const lines = [];
+  for (const raw of String(text).split("\n")){
+    const words = raw.split(/\s+/).filter(Boolean);
+    if (!words.length){ lines.push(""); continue; }
+    let cur = "";
+    for (const word of words){
+      const test = cur ? cur + " " + word : word;
+      if (cur && ctx.measureText(test).width > maxW){ lines.push(cur); cur = word; }
+      else cur = test;
+    }
+    lines.push(cur);
+  }
+  return lines;
+}
+function drawArrowLine(ctx, x1, y1, x2, y2, color, dashed){
+  const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  const head = 11, hw = 4.5;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.setLineDash(dashed ? [5, 4] : []);
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2 - ux * (head - 2), y2 - uy * (head - 2));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - ux * head - uy * hw, y2 - uy * head + ux * hw);
+  ctx.lineTo(x2 - ux * head + uy * hw, y2 - uy * head - ux * hw);
+  ctx.closePath();
+  ctx.fill();
+}
+function exportPng(){
+  const cs = getComputedStyle(document.documentElement);
+  const v = name => cs.getPropertyValue(name).trim();
+  const FONT = 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';
+
+  // Sichtbare Tiefe jeder Karte (für die Ebenenfarbe)
+  const depthOf = new Map();
+  (function walk(n, d){
+    depthOf.set(n.id, d);
+    if (!n.collapsed) n.children.forEach(c => walk(c, d + 1));
+  })(root, 0);
+
+  // Bildgrenzen: alle Karten, Textfelder und freien Pfeile
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const grow = (x, y, w = 0, h = 0) => {
+    minX = Math.min(minX, x); minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + w); maxY = Math.max(maxY, y + h);
+  };
+  nodeRects.forEach(r => grow(r.x, r.y, r.w, r.h));
+  notes.forEach(n => grow(n.x, n.y, n.w, n.h));
+  arrows.forEach(a => { if (!a.from){ grow(a.x1, a.y1); grow(a.x2, a.y2); } });
+  if (!isFinite(minX)) return;
+
+  const pad = 40, scale = 2;
+  const W = maxX - minX + 2 * pad, H = maxY - minY + 2 * pad;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(W * scale);
+  canvas.height = Math.round(H * scale);
+  const ctx = canvas.getContext("2d");
+  ctx.scale(scale, scale);
+  ctx.fillStyle = v("--bg");
+  ctx.fillRect(0, 0, W, H);
+  ctx.translate(pad - minX, pad - minY);
+  ctx.textBaseline = "top";
+
+  // 1) Baum-Verbinder (Winkel wie auf dem Bildschirm)
+  ctx.strokeStyle = v("--edge");
+  ctx.lineWidth = 1.5;
+  (function edges(n){
+    if (n.collapsed) return;
+    const p = nodeRects.get(n.id);
+    n.children.forEach(c => {
+      const q = nodeRects.get(c.id);
+      if (p && q){
+        const x1 = p.x + p.w / 2, y1 = p.y + p.h;
+        const x2 = q.x + q.w / 2, y2 = q.y;
+        const my = y1 + (y2 - y1) / 2;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1); ctx.lineTo(x1, my); ctx.lineTo(x2, my); ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+      edges(c);
+    });
+  })(root);
+
+  // 2) Namenskarten
+  nodeRects.forEach((r, id) => {
+    const n = findNode(id);
+    if (!n) return;
+    const lvlColor = v("--lvl" + (depthOf.get(id) % 6)) || v("--accent");
+    ctx.fillStyle = v("--surface");
+    ctx.strokeStyle = v("--line");
+    ctx.lineWidth = 1;
+    ctx.beginPath(); roundRect(ctx, r.x, r.y, r.w, r.h, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = lvlColor;
+    ctx.beginPath(); roundRect(ctx, r.x, r.y, 4, r.h, [6, 0, 0, 6]); ctx.fill();
+    ctx.fillStyle = lvlColor;
+    ctx.font = "700 9.5px " + FONT;
+    try { ctx.letterSpacing = "1px"; } catch(err){}
+    ctx.fillText(n.title.toUpperCase(), r.x + 16, r.y + 9);
+    try { ctx.letterSpacing = "0px"; } catch(err){}
+    ctx.fillStyle = v("--ink");
+    ctx.font = "600 13.5px " + FONT;
+    wrapText(ctx, n.name, r.w - 28).forEach((line, i) => {
+      ctx.fillText(line, r.x + 16, r.y + 23 + i * 17.5);
+    });
+  });
+
+  // 3) Textfelder
+  notes.forEach(nt => {
+    ctx.fillStyle = v("--surface");
+    ctx.strokeStyle = v("--edge");
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath(); roundRect(ctx, nt.x, nt.y, nt.w, nt.h, 6); ctx.fill(); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = v("--ink");
+    ctx.font = "400 13px " + FONT;
+    const maxLines = Math.max(1, Math.floor((nt.h - 16) / 18.2));
+    wrapText(ctx, nt.text, nt.w - 30).slice(0, maxLines).forEach((line, i) => {
+      ctx.fillText(line, nt.x + 10, nt.y + 9 + i * 18.2);
+    });
+  });
+
+  // 4) Pfeile
+  const accent = v("--accent");
+  arrows.forEach(a => {
+    let p;
+    if (a.from){ p = arrowPoints(a); if (!p) return; }
+    else p = { x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2 };
+    drawArrowLine(ctx, p.x1, p.y1, p.x2, p.y2, accent, false);
+  });
+
+  const dataUrl = canvas.toDataURL("image/png");
+  const api = hostApi();
+  if (api){ api.export_png(dataUrl).catch(() => alert("PNG-Export fehlgeschlagen.")); return; }
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = "rangstruktur.png";
+  link.click();
+}
+
+/* ── Toolbar ── */
+$("bAddChild").addEventListener("click", addChild);
+$("bAddSib").addEventListener("click", addSibling);
+$("bDelete").addEventListener("click", () => { if (annoSel) deleteAnno(); else deleteSelected(); });
+$("bNote").addEventListener("click", addNote);
+function setArrowMode(on){
+  arrowMode = on;
+  $("bArrow").classList.toggle("active", on);
+  stage.classList.toggle("arrowmode", on);
+}
+$("bArrow").addEventListener("click", () => setArrowMode(!arrowMode));
+$("bUndo").addEventListener("click", undo);
+$("bFit").addEventListener("click", fitView);
+$("bNew").addEventListener("click", () => {
+  if (!confirm("Alles verwerfen und neu beginnen?")) return;
+  pushUndo();
+  root = mkNode("Anführer", "Name");
+  notes = []; arrows = []; annoSel = null;
+  selectedId = root.id;
+  render(); renderAnno(); save(); fitView();
+});
+$("bExport").addEventListener("click", () => {
+  const text = JSON.stringify({ root, notes, arrows }, null, 2);
+  const api = hostApi();
+  if (api){ api.export_json(text).catch(() => alert("Export fehlgeschlagen.")); return; }
+  const a = document.createElement("a");
+  a.href = "data:application/json;charset=utf-8," + encodeURIComponent(text);
+  a.download = "rangstruktur.json";
+  a.click();
+});
+$("bPng").addEventListener("click", exportPng);
+$("bImport").addEventListener("click", () => {
+  const api = hostApi();
+  if (api){
+    api.import_json().then(text => { if (text != null) applyImport(text); })
+      .catch(() => alert("Import fehlgeschlagen."));
+    return;
+  }
+  $("fileIn").click();
+});
+$("fileIn").addEventListener("change", e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => applyImport(rd.result);
+  rd.readAsText(f);
+  e.target.value = "";
+});
+
+/* ── Start ── */
+async function init(){
+  let raw = null;
+  const api = hostApi();
+  try {
+    raw = api ? await api.load_data() : localStorage.getItem(STORE_KEY);
+  } catch(e){}
+  let hadData = false;
+  try {
+    if (raw){
+      const data = JSON.parse(raw);
+      root = data.root;
+      notes = Array.isArray(data.notes) ? data.notes : [];
+      arrows = Array.isArray(data.arrows) ? data.arrows : [];
+      if (data.view) view = data.view;
+      hadData = true;
+    }
+  } catch(e){}
+  if (root && Array.isArray(root.children)) migrate(root);
+  if (!root || typeof root.name !== "string"){ root = defaultTree(); hadData = false; }
+  selectedId = root.id;
+  $("bUndo").disabled = true;
+  render(); renderAnno();
+  if (hadData) applyView(); else fitView();
+  window.addEventListener("resize", applyView);
+}
+// In der Desktop-App erst starten, wenn die Python-Brücke bereit ist
+if (window.pywebview) init();
+else {
+  let started = false;
+  const go = () => { if (!started){ started = true; init(); } };
+  window.addEventListener("pywebviewready", go);
+  setTimeout(go, 700); // Browser-Fallback ohne pywebview
+}
+</script>
+</body>
+</html>
