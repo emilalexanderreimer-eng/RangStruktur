@@ -81,7 +81,9 @@ header h1 span{color:var(--accent)}
   background:var(--surface); border:1px solid var(--line); border-radius:7px;
   box-shadow:var(--shadow); cursor:pointer;
 }
+.node.pair{max-width:380px}
 .node .stripe{flex:0 0 4px; border-radius:6px 0 0 6px; background:var(--lvl-color,var(--accent))}
+.node .divider{flex:0 0 1px; background:var(--line); margin:6px 0}
 .node .body{padding:8px 12px 9px; min-width:0; flex:1}
 .node .rank{
   font-size:9.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
@@ -179,6 +181,7 @@ footer kbd{
   <h1>Rang<span>struktur</span></h1>
   <button class="btn primary" id="bAddChild" title="Untergebenen hinzufügen (Tab)">+ Untergeordnet</button>
   <button class="btn" id="bAddSib" title="Gleichrangigen hinzufügen (Enter)">+ Gleichrangig</button>
+  <button class="btn" id="bPartner" title="Partner auf derselben Karte hinzufügen / entfernen (z. B. Ehepaar im Stammbaum)">⚭ Partner</button>
   <button class="btn danger" id="bDelete" title="Auswahl löschen (Entf)">Löschen</button>
   <div class="sep"></div>
   <button class="btn" id="bAddTree" title="Weitere, unabhängige Struktur auf dieser Fläche anlegen">+ Struktur</button>
@@ -272,6 +275,7 @@ function migrate(n){
   if (typeof n.text === "string" && typeof n.name !== "string"){ n.name = n.text; delete n.text; }
   if (typeof n.title !== "string") n.title = "Titel";
   if (typeof n.name !== "string") n.name = "Name";
+  if (n.partner && (typeof n.partner.title !== "string" || typeof n.partner.name !== "string")) delete n.partner;
   (n.children || []).forEach(migrate);
 }
 
@@ -391,13 +395,18 @@ function render(){
     const up = tree.dir === "up";
     (function build(n, depth){
       const el = document.createElement("div");
-      el.className = "node" + (up ? " up" : "");
+      el.className = "node" + (up ? " up" : "") + (n.partner ? " pair" : "");
       el.dataset.id = n.id;
       el.style.setProperty("--lvl-color", `var(--lvl${depth % 6})`);
       if (n.id === selectedId) el.classList.add("selected");
-      el.innerHTML = `<div class="stripe"></div><div class="body"><div class="rank"></div><div class="label"></div></div>`;
-      el.querySelector(".rank").textContent = n.title;
-      el.querySelector(".label").textContent = n.name;
+      el.innerHTML = `<div class="stripe"></div><div class="body"><div class="rank" data-field="title"></div><div class="label" data-field="name"></div></div>`
+        + (n.partner ? `<div class="divider"></div><div class="body"><div class="rank" data-field="ptitle"></div><div class="label" data-field="pname"></div></div>` : "");
+      el.querySelector('[data-field="title"]').textContent = n.title;
+      el.querySelector('[data-field="name"]').textContent = n.name;
+      if (n.partner){
+        el.querySelector('[data-field="ptitle"]').textContent = n.partner.title;
+        el.querySelector('[data-field="pname"]').textContent = n.partner.name;
+      }
       if (n.children.length){
         const btn = document.createElement("button");
         btn.className = "collapse";
@@ -504,6 +513,9 @@ function updateButtons(){
   $("bDelete").disabled = annoSel ? false : (!selectedId || (rootSel && forest.length < 2));
   $("bAddSib").disabled = !selectedId || rootSel;
   $("bFlip").disabled = !selectedId;
+  const selNode = selectedId ? findNode(selectedId) : null;
+  $("bPartner").disabled = !selNode;
+  $("bPartner").textContent = selNode && selNode.partner ? "⚭ Partner entfernen" : "⚭ Partner";
 }
 
 function contentBounds(){
@@ -602,7 +614,7 @@ function flipTree(){
 
 /* ── Titel/Name bearbeiten ── */
 function fieldEl(id, field){
-  return nodesEl.querySelector(`.node[data-id="${id}"] .${field === "title" ? "rank" : "label"}`);
+  return nodesEl.querySelector(`.node[data-id="${id}"] [data-field="${field}"]`);
 }
 function focusField(id, field){
   const el = fieldEl(id, field);
@@ -614,31 +626,55 @@ function focusField(id, field){
   sel.removeAllRanges(); sel.addRange(range);
 }
 function startEdit(id, field){
-  const tEl = fieldEl(id, "title"), nEl = fieldEl(id, "name");
-  if (!tEl || !nEl) return;
+  const els = nodesEl.querySelectorAll(`.node[data-id="${id}"] [data-field]`);
+  if (!els.length) return;
   editingId = id;
-  tEl.contentEditable = "true";
-  nEl.contentEditable = "true";
+  els.forEach(el => el.contentEditable = "true");
   focusField(id, field || "title");
 }
 function finishEdit(commit){
   if (!editingId) return;
   const n = findNode(editingId);
   const id = editingId;
-  const tEl = fieldEl(id, "title"), nEl = fieldEl(id, "name");
   editingId = null;
-  if (n && tEl && nEl){
-    const title = tEl.textContent.trim(), name = nEl.textContent.trim();
-    if (commit && ((title && title !== n.title) || (name && name !== n.name))){
-      pushUndo();
-      if (title) n.title = title;
-      if (name) n.name = name;
+  const els = nodesEl.querySelectorAll(`.node[data-id="${id}"] [data-field]`);
+  if (n && els.length){
+    const val = {};
+    els.forEach(el => { val[el.dataset.field] = el.textContent.trim(); });
+    if (commit){
+      const changed =
+        (val.title && val.title !== n.title) || (val.name && val.name !== n.name) ||
+        (n.partner && ((val.ptitle && val.ptitle !== n.partner.title) || (val.pname && val.pname !== n.partner.name)));
+      if (changed){
+        pushUndo();
+        if (val.title) n.title = val.title;
+        if (val.name) n.name = val.name;
+        if (n.partner){
+          if (val.ptitle) n.partner.title = val.ptitle;
+          if (val.pname) n.partner.name = val.pname;
+        }
+      }
     }
-    tEl.contentEditable = "false";
-    nEl.contentEditable = "false";
+    els.forEach(el => el.contentEditable = "false");
   }
   render(); save();
   select(id);
+}
+function togglePartner(){
+  if (!selectedId) return;
+  const n = findNode(selectedId);
+  if (!n) return;
+  if (n.partner){
+    if (!confirm("Partner von dieser Karte entfernen?")) return;
+    pushUndo();
+    delete n.partner;
+    render(); save();
+  } else {
+    pushUndo();
+    n.partner = { title: "Partner", name: "Name" };
+    render(); save();
+    startEdit(n.id, "ptitle");
+  }
 }
 
 /* ── Textfelder & Pfeile ── */
@@ -846,7 +882,7 @@ stage.addEventListener("pointerdown", e => {
     if (annoSel) setAnnoSel(null);
     select(id);
     drag = { id, startX: e.clientX, startY: e.clientY, moved: false,
-             wasSelected, field: e.target.closest(".rank") ? "title" : "name" };
+             wasSelected, field: e.target.closest("[data-field]")?.dataset.field || "name" };
   } else {
     if (annoSel) setAnnoSel(null);
     drag = { pan: true, startX: e.clientX, startY: e.clientY, vx: view.x, vy: view.y };
@@ -986,7 +1022,7 @@ stage.addEventListener("pointercancel", () => {
 });
 nodesEl.addEventListener("dblclick", e => {
   const el = e.target.closest(".node");
-  if (el) startEdit(el.dataset.id, e.target.closest(".rank") ? "title" : "name");
+  if (el) startEdit(el.dataset.id, e.target.closest("[data-field]")?.dataset.field);
 });
 stage.addEventListener("wheel", e => {
   e.preventDefault();
@@ -1010,7 +1046,9 @@ document.addEventListener("keydown", e => {
     else if (e.key === "Escape"){ e.preventDefault(); finishEdit(false); }
     else if (e.key === "Tab"){
       e.preventDefault();
-      if (document.activeElement === fieldEl(editingId, "title")) focusField(editingId, "name");
+      const order = ["title","name","ptitle","pname"].filter(f => fieldEl(editingId, f));
+      const i = order.findIndex(f => document.activeElement === fieldEl(editingId, f));
+      if (i >= 0 && i < order.length - 1) focusField(editingId, order[i + 1]);
       else finishEdit(true);
     }
     return;
@@ -1179,15 +1217,30 @@ function exportPng(){
     ctx.beginPath(); roundRect(ctx, r.x, r.y, r.w, r.h, 7); ctx.fill(); ctx.stroke();
     ctx.fillStyle = lvlColor;
     ctx.beginPath(); roundRect(ctx, r.x, r.y, 4, r.h, [6, 0, 0, 6]); ctx.fill();
-    ctx.fillStyle = lvlColor;
-    ctx.font = "700 9.5px " + FONT;
-    try { ctx.letterSpacing = "1px"; } catch(err){}
-    ctx.fillText(n.title.toUpperCase(), r.x + 16, r.y + 9);
-    try { ctx.letterSpacing = "0px"; } catch(err){}
-    ctx.fillStyle = v("--ink");
-    ctx.font = "600 13.5px " + FONT;
-    wrapText(ctx, n.name, r.w - 28).forEach((line, i) => {
-      ctx.fillText(line, r.x + 16, r.y + 23 + i * 17.5);
+    const halfW = (r.w - 5) / 2;
+    const persons = n.partner
+      ? [[n.title, n.name, r.x + 16], [n.partner.title, n.partner.name, r.x + 4 + halfW + 13]]
+      : [[n.title, n.name, r.x + 16]];
+    const colW = n.partner ? halfW - 24 : r.w - 28;
+    if (n.partner){
+      ctx.strokeStyle = v("--line");
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(r.x + 4 + halfW + 0.5, r.y + 6);
+      ctx.lineTo(r.x + 4 + halfW + 0.5, r.y + r.h - 6);
+      ctx.stroke();
+    }
+    persons.forEach(([pt, pn, tx]) => {
+      ctx.fillStyle = lvlColor;
+      ctx.font = "700 9.5px " + FONT;
+      try { ctx.letterSpacing = "1px"; } catch(err){}
+      ctx.fillText(pt.toUpperCase(), tx, r.y + 9);
+      try { ctx.letterSpacing = "0px"; } catch(err){}
+      ctx.fillStyle = v("--ink");
+      ctx.font = "600 13.5px " + FONT;
+      wrapText(ctx, pn, colW).forEach((line, i) => {
+        ctx.fillText(line, tx, r.y + 23 + i * 17.5);
+      });
     });
   });
 
@@ -1237,6 +1290,7 @@ function exportPng(){
 /* ── Toolbar ── */
 $("bAddChild").addEventListener("click", addChild);
 $("bAddSib").addEventListener("click", addSibling);
+$("bPartner").addEventListener("click", togglePartner);
 $("bDelete").addEventListener("click", () => { if (annoSel) deleteAnno(); else deleteSelected(); });
 $("bAddTree").addEventListener("click", addTree);
 $("bFlip").addEventListener("click", flipTree);
