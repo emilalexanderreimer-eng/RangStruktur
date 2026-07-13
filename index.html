@@ -53,14 +53,24 @@ header h1 span{color:var(--accent)}
 .btn.primary{background:var(--accent); color:var(--accent-ink); border-color:var(--accent)}
 .btn.primary:hover{filter:brightness(1.08)}
 .btn.danger:hover{border-color:var(--danger); color:var(--danger)}
+.btn.active{background:var(--accent); color:var(--accent-ink); border-color:var(--accent)}
 .sep{width:1px; height:22px; background:var(--line); margin:0 4px}
 .spacer{flex:1}
+/* Farbpalette für Textfelder */
+#palette{display:flex; align-items:center; gap:5px}
+#palette[hidden]{display:none}
+.chip{
+  width:19px; height:19px; border-radius:50%; cursor:pointer; padding:0;
+  border:2px solid var(--line); background:var(--chip, var(--surface));
+}
+.chip:hover{border-color:var(--ink)}
 /* ── Canvas ──────────────────────────── */
 #stage{flex:1; position:relative; overflow:hidden; cursor:grab; touch-action:none;
   background-image:radial-gradient(var(--line) 1px, transparent 1px);
   background-size:26px 26px;
 }
 #stage.panning{cursor:grabbing}
+#stage.arrowmode{cursor:crosshair}
 #world{position:absolute; top:0; left:0; transform-origin:0 0}
 #edges{position:absolute; top:0; left:0; overflow:visible; pointer-events:none}
 #edges path{fill:none; stroke:var(--edge); stroke-width:1.5px}
@@ -94,6 +104,7 @@ header h1 span{color:var(--accent)}
   font-size:10px; font-weight:700; line-height:18px; text-align:center;
   cursor:pointer; padding:0;
 }
+.node.up .collapse{bottom:auto; top:-11px}
 .node .collapse:hover{border-color:var(--accent); color:var(--accent)}
 /* ── Anmerkungen: Textfelder & Pfeile ── */
 #anno{position:absolute; top:0; left:0; overflow:visible; pointer-events:none}
@@ -112,21 +123,40 @@ header h1 span{color:var(--accent)}
   white-space:pre-wrap; overflow-wrap:break-word; width:100%; height:100%; overflow:hidden;
 }
 .note .ntext[contenteditable="true"]{cursor:text; -webkit-user-select:text; user-select:text}
-.note.selected{border-style:solid; border-color:var(--accent); box-shadow:0 0 0 1px var(--accent), var(--shadow)}
+.note.selected{box-shadow:0 0 0 2px var(--accent), var(--shadow)}
+.note.droptarget{box-shadow:0 0 0 2px var(--lvl1), var(--shadow)}
 .note .resize{
   position:absolute; right:2px; bottom:2px; width:14px; height:14px; cursor:nwse-resize;
   border-right:2px solid var(--edge); border-bottom:2px solid var(--edge); border-radius:0 0 4px 0;
 }
 .note.selected .resize{border-color:var(--accent)}
-.note.droptarget{border-style:solid; border-color:var(--lvl1); box-shadow:0 0 0 2px var(--lvl1), var(--shadow)}
-#stage.arrowmode{cursor:crosshair}
-.btn.active{background:var(--accent); color:var(--accent-ink); border-color:var(--accent)}
 #ghost{
   position:fixed; pointer-events:none; z-index:50; display:none;
   padding:6px 12px; border-radius:6px; font-size:13px; font-weight:600;
   background:var(--accent); color:var(--accent-ink); box-shadow:var(--shadow);
   max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
+/* ── Tabs (wie Excel) ─────────────────── */
+#tabs{
+  flex:0 0 auto; display:flex; align-items:center; gap:5px;
+  padding:5px 10px; background:var(--surface); border-top:1px solid var(--line);
+  overflow-x:auto;
+}
+.tab{
+  font:inherit; font-size:12px; font-weight:500; white-space:nowrap;
+  padding:4px 12px; border-radius:6px; cursor:pointer;
+  background:var(--bg); color:var(--ink-soft); border:1px solid var(--line);
+}
+.tab:hover{border-color:var(--accent); color:var(--accent)}
+.tab.active{background:var(--accent); color:var(--accent-ink); border-color:var(--accent)}
+.tab .x{margin-left:7px; opacity:.75; font-weight:700}
+.tab .x:hover{opacity:1}
+#bNewTab{
+  font:inherit; font-size:14px; line-height:1; padding:4px 10px; cursor:pointer;
+  background:var(--bg); color:var(--ink-soft); border:1px solid var(--line); border-radius:6px;
+}
+#bNewTab:hover{border-color:var(--accent); color:var(--accent)}
+#tabHint{font-size:11px; color:var(--ink-soft); margin-left:8px; white-space:nowrap}
 /* ── Footer ──────────────────────────── */
 footer{
   flex:0 0 auto; display:flex; align-items:center; gap:16px; flex-wrap:wrap;
@@ -149,18 +179,29 @@ footer kbd{
   <h1>Rang<span>struktur</span></h1>
   <button class="btn primary" id="bAddChild" title="Untergebenen hinzufügen (Tab)">+ Untergeordnet</button>
   <button class="btn" id="bAddSib" title="Gleichrangigen hinzufügen (Enter)">+ Gleichrangig</button>
-  <button class="btn danger" id="bDelete" title="Zweig löschen (Entf)">Löschen</button>
+  <button class="btn danger" id="bDelete" title="Auswahl löschen (Entf)">Löschen</button>
+  <div class="sep"></div>
+  <button class="btn" id="bAddTree" title="Weitere, unabhängige Struktur auf dieser Fläche anlegen">+ Struktur</button>
+  <button class="btn" id="bFlip" title="Baurichtung der ausgewählten Struktur umdrehen (nach oben / nach unten)">⇅ Richtung</button>
   <div class="sep"></div>
   <button class="btn" id="bNote" title="Freies Textfeld einfügen (verschieben: ziehen, Größe: Ecke unten rechts)">+ Textfeld</button>
   <button class="btn" id="bArrow" title="Pfeil verbinden: aktivieren, dann von einer Karte / einem Textfeld zum Ziel ziehen">↗ Pfeil</button>
-  <div class="sep"></div>
+  <span id="palette" hidden>
+    <button class="chip" data-c="" title="Standard"></button>
+    <button class="chip" data-c="0" style="--chip:var(--lvl0)" title="Blau"></button>
+    <button class="chip" data-c="1" style="--chip:var(--lvl1)" title="Grün"></button>
+    <button class="chip" data-c="2" style="--chip:var(--lvl2)" title="Ocker"></button>
+    <button class="chip" data-c="3" style="--chip:var(--lvl3)" title="Violett"></button>
+    <button class="chip" data-c="4" style="--chip:var(--lvl4)" title="Rot"></button>
+    <button class="chip" data-c="5" style="--chip:var(--lvl5)" title="Oliv"></button>
+  </span>
+  <div class="spacer"></div>
   <button class="btn" id="bUndo" title="Rückgängig (Strg+Z)">↶ Rückgängig</button>
   <button class="btn" id="bFit" title="Ansicht einpassen">Einpassen</button>
-  <div class="spacer"></div>
   <button class="btn" id="bExport">Export JSON</button>
-  <button class="btn" id="bPng" title="Als PNG-Bild speichern">PNG</button>
+  <button class="btn" id="bPng" title="Aktuellen Tab als PNG-Bild speichern">PNG</button>
   <button class="btn" id="bImport">Import</button>
-  <button class="btn danger" id="bNew">Neu</button>
+  <button class="btn danger" id="bNew" title="Aktuellen Tab leeren">Neu</button>
   <input type="file" id="fileIn" accept=".json,application/json" hidden>
 </header>
 
@@ -174,29 +215,35 @@ footer kbd{
 </div>
 <div id="ghost"></div>
 
+<div id="tabs">
+  <div id="tabList" style="display:flex; gap:5px"></div>
+  <button id="bNewTab" title="Neuer Tab">＋</button>
+  <span id="tabHint">Doppelklick auf einen Tab: umbenennen</span>
+</div>
+
 <footer>
   <span><kbd>Klick</kbd> auswählen, nochmal klicken: bearbeiten</span>
   <span><kbd>Tab</kbd> untergeordnet</span>
   <span><kbd>Enter</kbd> gleichrangig</span>
   <span><kbd>Entf</kbd> löschen</span>
-  <span><kbd>Ziehen</kbd> Knoten umhängen · Fläche verschieben</span>
+  <span><kbd>Ziehen</kbd> auf Karte: umhängen · ins Leere: verschieben</span>
   <span><kbd>Scrollen</kbd> zoomen</span>
   <span id="stats"></span>
 </footer>
 
 <script>
 "use strict";
-const STORE_KEY = "rangstruktur-v1";
+const STORE_KEY = "rangstruktur-v2";
+const OLD_KEY = "rangstruktur-v1";
 const H_GAP = 28, V_GAP = 64;
 
-let root, selectedId = null, editingId = null;
-let notes = [], arrows = [];
-let nodeRects = new Map();   // Weltkoordinaten der sichtbaren Namenskarten (id -> {x,y,w,h})
-let annoSel = null;          // {type:"note"|"arrow", id} – ausgewähltes Textfeld / Pfeil
-let editingNoteId = null;
-let arrowMode = false;
+/* Arbeitsmappen-Zustand: mehrere Tabs (docs), pro Tab ein Wald aus Strukturen */
+let docs = [], docIdx = 0;
+let forest, notes, arrows, view;          // Aliase auf docs[docIdx]
+let selectedId = null, editingId = null;
+let annoSel = null, editingNoteId = null, arrowMode = false;
+let nodeRects = new Map();                // Weltkoordinaten sichtbarer Karten
 let undoStack = [];
-let view = { x: 0, y: 0, k: 1 };
 
 const $ = id => document.getElementById(id);
 const stage = $("stage"), world = $("world"), nodesEl = $("nodes"), edgesEl = $("edges"), ghost = $("ghost");
@@ -204,6 +251,21 @@ const annoEl = $("anno"), notesLayer = $("notesLayer");
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 const mkNode = (title, name) => ({ id: uid(), title, name, collapsed: false, children: [] });
+
+function mkDoc(name){
+  const r = mkNode("Anführer", "Name");
+  return { id: uid(), name, forest: [r], notes: [], arrows: [], view: { x: 60, y: 60, k: 1 } };
+}
+function defaultDoc(){
+  const d = mkDoc("Struktur 1");
+  const r = d.forest[0];
+  r.name = "Emil";
+  const a = mkNode("Stellvertreter", "Name"), b = mkNode("Stellvertreter", "Name");
+  a.children.push(mkNode("Mitglied", "Name"), mkNode("Mitglied", "Name"));
+  b.children.push(mkNode("Mitglied", "Name"));
+  r.children.push(a, b);
+  return d;
+}
 
 /* Alte Speicherstände (nur "text") auf Titel+Name heben */
 function migrate(n){
@@ -213,184 +275,271 @@ function migrate(n){
   (n.children || []).forEach(migrate);
 }
 
-/* Host-Anbindung: in der Desktop-App speichert Python in eine Datei,
-   im Browser fällt alles auf localStorage / Datei-Dialoge zurück. */
+/* Host-Anbindung: Desktop-App speichert über Python, Browser über localStorage */
 const hostApi = () => (window.pywebview && window.pywebview.api) || null;
 
-function defaultTree(){
-  const r = mkNode("Anführer", "Emil");
-  const a = mkNode("Stellvertreter", "Name"), b = mkNode("Stellvertreter", "Name");
-  a.children.push(mkNode("Mitglied", "Name"), mkNode("Mitglied", "Name"));
-  b.children.push(mkNode("Mitglied", "Name"));
-  r.children.push(a, b);
-  return r;
-}
-
-/* ── Baum-Hilfen ── */
-function findNode(id, n = root){
+/* ── Baum-Hilfen (über alle Strukturen des Tabs) ── */
+function findIn(n, id){
   if (n.id === id) return n;
-  for (const c of n.children){ const f = findNode(id, c); if (f) return f; }
+  for (const c of n.children){ const f = findIn(c, id); if (f) return f; }
   return null;
 }
-function findParent(id, n = root){
+function findNode(id){
+  for (const t of forest){ const f = findIn(t, id); if (f) return f; }
+  return null;
+}
+function findParentIn(n, id){
   for (const c of n.children){
     if (c.id === id) return n;
-    const f = findParent(id, c); if (f) return f;
+    const f = findParentIn(c, id); if (f) return f;
   }
   return null;
 }
+function findParent(id){
+  for (const t of forest){
+    if (t.id === id) return null;
+    const f = findParentIn(t, id); if (f) return f;
+  }
+  return null;
+}
+function treeOf(id){
+  for (const t of forest){ if (findIn(t, id)) return t; }
+  return null;
+}
+const isRoot = id => forest.some(t => t.id === id);
 function isDescendant(maybeChildId, ancestor){
   if (ancestor.id === maybeChildId) return true;
   return ancestor.children.some(c => isDescendant(maybeChildId, c));
 }
-function countNodes(n = root){ return 1 + n.children.reduce((s,c) => s + countNodes(c), 0); }
-function maxDepth(n = root, d = 1){ return n.children.length ? Math.max(...n.children.map(c => maxDepth(c, d+1))) : d; }
+function countNodes(n){ return 1 + n.children.reduce((s,c) => s + countNodes(c), 0); }
+function countAll(){ return forest.reduce((s,t) => s + countNodes(t), 0); }
+function maxDepth(n, d = 1){ return n.children.length ? Math.max(...n.children.map(c => maxDepth(c, d+1))) : d; }
 
 /* ── Persistenz / Undo ── */
 function save(){
-  const text = JSON.stringify({ root, view, notes, arrows });
+  const text = JSON.stringify({ version: 2, active: docIdx, docs });
   const api = hostApi();
   if (api){ api.save_data(text).catch(() => {}); }
   else { try { localStorage.setItem(STORE_KEY, text); } catch(e){} }
 }
 function pushUndo(){
-  undoStack.push(JSON.stringify({ root, notes, arrows }));
+  undoStack.push({ i: docIdx, s: JSON.stringify({ forest, notes, arrows }) });
   if (undoStack.length > 100) undoStack.shift();
   $("bUndo").disabled = false;
 }
 function undo(){
   if (!undoStack.length) return;
-  const s = JSON.parse(undoStack.pop());
-  root = s.root;
-  notes = s.notes || [];
-  arrows = s.arrows || [];
-  if (selectedId && !findNode(selectedId)) selectedId = root.id;
-  if (annoSel && !findNote(annoSel.id) && !findArrow(annoSel.id)) annoSel = null;
+  const u = undoStack.pop();
+  if (u.i !== docIdx && docs[u.i]) activate(u.i);
+  const s = JSON.parse(u.s);
+  docs[docIdx].forest = forest = s.forest;
+  docs[docIdx].notes = notes = s.notes || [];
+  docs[docIdx].arrows = arrows = s.arrows || [];
+  if (selectedId && !findNode(selectedId)) selectedId = forest[0].id;
+  if (annoSel && !findNote(annoSel.id) && !findArrow(annoSel.id)) setAnnoSel(null);
   $("bUndo").disabled = !undoStack.length;
-  render(); renderAnno(); save();
+  render(); save();
 }
 
-/* ── Layout (zwei Durchgänge: messen, dann setzen) ── */
+/* ── Tabs ── */
+function activate(i){
+  docIdx = Math.max(0, Math.min(i, docs.length - 1));
+  const d = docs[docIdx];
+  forest = d.forest; notes = d.notes; arrows = d.arrows; view = d.view;
+  selectedId = forest[0] ? forest[0].id : null;
+  annoSel = null; editingId = null; editingNoteId = null;
+  setArrowMode(false);
+  render(); renderTabs(); applyView();
+}
+function renderTabs(){
+  const list = $("tabList");
+  list.innerHTML = "";
+  docs.forEach((d, i) => {
+    const b = document.createElement("button");
+    b.className = "tab" + (i === docIdx ? " active" : "");
+    b.textContent = d.name;
+    if (i === docIdx && docs.length > 1){
+      const x = document.createElement("span");
+      x.className = "x";
+      x.textContent = "×";
+      x.title = "Tab schließen";
+      x.addEventListener("click", e => {
+        e.stopPropagation();
+        if (!confirm(`Tab "${d.name}" mit allem Inhalt löschen?`)) return;
+        docs.splice(i, 1);
+        undoStack = undoStack.filter(u => u.i !== i).map(u => u.i > i ? { i: u.i - 1, s: u.s } : u);
+        $("bUndo").disabled = !undoStack.length;
+        activate(Math.max(0, i - 1));
+        save();
+      });
+      b.appendChild(x);
+    }
+    b.addEventListener("click", () => { if (i !== docIdx){ activate(i); save(); } });
+    b.addEventListener("dblclick", () => {
+      const name = prompt("Name der Struktur:", d.name);
+      if (name && name.trim()){ d.name = name.trim(); renderTabs(); save(); }
+    });
+    list.appendChild(b);
+  });
+}
+
+/* ── Layout & Rendern (alle Strukturen des Tabs) ── */
 function render(){
   nodesEl.innerHTML = "";
   const els = new Map();
-  (function build(n, depth){
-    const el = document.createElement("div");
-    el.className = "node";
-    el.dataset.id = n.id;
-    el.style.setProperty("--lvl-color", `var(--lvl${depth % 6})`);
-    if (n.id === selectedId) el.classList.add("selected");
-    el.innerHTML = `<div class="stripe"></div><div class="body"><div class="rank"></div><div class="label"></div></div>`;
-    el.querySelector(".rank").textContent = n.title;
-    el.querySelector(".label").textContent = n.name;
-    if (n.children.length){
-      const btn = document.createElement("button");
-      btn.className = "collapse";
-      btn.textContent = n.collapsed ? n.children.length : "–";
-      btn.title = n.collapsed ? "Zweig aufklappen" : "Zweig einklappen";
-      btn.addEventListener("pointerdown", e => e.stopPropagation());
-      btn.addEventListener("click", e => {
-        e.stopPropagation();
-        n.collapsed = !n.collapsed;
-        render(); save();
-      });
-      el.appendChild(btn);
-    }
-    nodesEl.appendChild(el);
-    els.set(n.id, el);
-    if (!n.collapsed) n.children.forEach(c => build(c, depth + 1));
-  })(root, 0);
+  forest.forEach(tree => {
+    const up = tree.dir === "up";
+    (function build(n, depth){
+      const el = document.createElement("div");
+      el.className = "node" + (up ? " up" : "");
+      el.dataset.id = n.id;
+      el.style.setProperty("--lvl-color", `var(--lvl${depth % 6})`);
+      if (n.id === selectedId) el.classList.add("selected");
+      el.innerHTML = `<div class="stripe"></div><div class="body"><div class="rank"></div><div class="label"></div></div>`;
+      el.querySelector(".rank").textContent = n.title;
+      el.querySelector(".label").textContent = n.name;
+      if (n.children.length){
+        const btn = document.createElement("button");
+        btn.className = "collapse";
+        btn.textContent = n.collapsed ? n.children.length : "–";
+        btn.title = n.collapsed ? "Zweig aufklappen" : "Zweig einklappen";
+        btn.addEventListener("pointerdown", e => e.stopPropagation());
+        btn.addEventListener("click", e => {
+          e.stopPropagation();
+          n.collapsed = !n.collapsed;
+          render(); save();
+        });
+        el.appendChild(btn);
+      }
+      nodesEl.appendChild(el);
+      els.set(n.id, el);
+      if (!n.collapsed) n.children.forEach(c => build(c, depth + 1));
+    })(tree, 0);
+  });
 
   // Messen
   const size = new Map();
   els.forEach((el, id) => size.set(id, { w: el.offsetWidth, h: el.offsetHeight }));
 
-  // Zeilenhöhe pro Ebene
-  const levelH = [];
-  (function depths(n, d){
-    if (!els.has(n.id)) return;
-    levelH[d] = Math.max(levelH[d] || 0, size.get(n.id).h);
-    if (!n.collapsed) n.children.forEach(c => depths(c, d + 1));
-  })(root, 0);
-  const levelY = [0];
-  for (let i = 1; i < levelH.length; i++) levelY[i] = levelY[i-1] + levelH[i-1] + V_GAP;
+  nodeRects = new Map();
+  let paths = "";
+  forest.forEach(tree => {
+    const up = tree.dir === "up";
+    // Zeilenhöhen dieser Struktur
+    const levelH = [];
+    (function depths(n, d){
+      if (!els.has(n.id)) return;
+      levelH[d] = Math.max(levelH[d] || 0, size.get(n.id).h);
+      if (!n.collapsed) n.children.forEach(c => depths(c, d + 1));
+    })(tree, 0);
+    const levelY = [0];
+    for (let i = 1; i < levelH.length; i++) levelY[i] = levelY[i-1] + levelH[i-1] + V_GAP;
 
-  // Teilbaum-Breiten
-  const subW = new Map();
-  (function widths(n){
-    const own = size.get(n.id).w;
-    if (n.collapsed || !n.children.length){ subW.set(n.id, own); return own; }
-    let sum = 0;
-    n.children.forEach((c, i) => { sum += widths(c) + (i ? H_GAP : 0); });
-    const w = Math.max(own, sum);
-    subW.set(n.id, w);
-    return w;
-  })(root);
+    // Teilbaum-Breiten
+    const subW = new Map();
+    (function widths(n){
+      const own = size.get(n.id).w;
+      if (n.collapsed || !n.children.length){ subW.set(n.id, own); return own; }
+      let sum = 0;
+      n.children.forEach((c, i) => { sum += widths(c) + (i ? H_GAP : 0); });
+      const w = Math.max(own, sum);
+      subW.set(n.id, w);
+      return w;
+    })(tree);
 
-  // Positionen
-  const pos = new Map();
-  (function place(n, x, d){
-    const w = subW.get(n.id), own = size.get(n.id);
-    pos.set(n.id, { x: x + (w - own.w) / 2, y: levelY[d], w: own.w, h: own.h });
-    if (n.collapsed || !n.children.length) return;
-    let cx = x + (w - (n.children.reduce((s,c,i) => s + subW.get(c.id) + (i ? H_GAP : 0), 0))) / 2;
-    n.children.forEach(c => { place(c, cx, d + 1); cx += subW.get(c.id) + H_GAP; });
-  })(root, 0, 0);
+    // Positionen (mit manuellen Versätzen ox/oy, die auf den Teilbaum vererbt werden)
+    const treeIds = [];
+    (function place(n, x, d, ax, ay){
+      const ox = ax + (n.ox || 0), oy = ay + (n.oy || 0);
+      const w = subW.get(n.id), own = size.get(n.id);
+      nodeRects.set(n.id, { x: x + (w - own.w) / 2 + ox, y: levelY[d] + oy, w: own.w, h: own.h });
+      treeIds.push(n.id);
+      if (n.collapsed || !n.children.length) return;
+      let cx = x + (w - (n.children.reduce((s,c,i) => s + subW.get(c.id) + (i ? H_GAP : 0), 0))) / 2;
+      n.children.forEach(c => { place(c, cx, d + 1, ox, oy); cx += subW.get(c.id) + H_GAP; });
+    })(tree, 0, 0, 0, 0);
+
+    // Nach oben bauende Struktur: vertikal spiegeln
+    if (up && treeIds.length){
+      let tMin = Infinity, tMax = -Infinity;
+      treeIds.forEach(id => { const p = nodeRects.get(id); tMin = Math.min(tMin, p.y); tMax = Math.max(tMax, p.y + p.h); });
+      treeIds.forEach(id => { const p = nodeRects.get(id); p.y = tMin + tMax - (p.y + p.h); });
+    }
+
+    // Verbinder
+    (function edges(n){
+      if (n.collapsed) return;
+      const p = nodeRects.get(n.id);
+      n.children.forEach(c => {
+        const q = nodeRects.get(c.id);
+        if (p && q){
+          const x1 = p.x + p.w / 2, x2 = q.x + q.w / 2;
+          const y1 = up ? p.y : p.y + p.h;
+          const y2 = up ? q.y + q.h : q.y;
+          const my = y1 + (y2 - y1) / 2;
+          paths += `<path d="M ${x1} ${y1} L ${x1} ${my} L ${x2} ${my} L ${x2} ${y2}"/>`;
+        }
+        edges(c);
+      });
+    })(tree);
+  });
 
   els.forEach((el, id) => {
-    const p = pos.get(id);
+    const p = nodeRects.get(id);
     el.style.left = p.x + "px";
     el.style.top = p.y + "px";
   });
-  nodeRects = pos;
-
-  // Kanten (Winkel-Verbinder)
-  let paths = "";
-  (function edges(n){
-    if (n.collapsed) return;
-    const p = pos.get(n.id);
-    n.children.forEach(c => {
-      const q = pos.get(c.id);
-      const x1 = p.x + p.w / 2, y1 = p.y + p.h;
-      const x2 = q.x + q.w / 2, y2 = q.y;
-      const my = y1 + (y2 - y1) / 2;
-      paths += `<path d="M ${x1} ${y1} L ${x1} ${my} L ${x2} ${my} L ${x2} ${y2}"/>`;
-      edges(c);
-    });
-  })(root);
-  const totalW = subW.get(root.id), totalH = levelY[levelY.length-1] + levelH[levelH.length-1];
-  edgesEl.setAttribute("width", totalW);
-  edgesEl.setAttribute("height", totalH);
+  edgesEl.setAttribute("width", 10);
+  edgesEl.setAttribute("height", 10);
   edgesEl.innerHTML = paths;
 
-  $("stats").textContent = countNodes() + " Positionen · " + maxDepth() + " Ebenen";
-  $("bDelete").disabled = annoSel ? false : (selectedId === root.id || !selectedId);
-  $("bAddSib").disabled = selectedId === root.id || !selectedId;
-  renderAnno(); // Kartenpositionen haben sich evtl. geändert – gebundene Pfeile nachführen
+  const deepest = Math.max(...forest.map(t => maxDepth(t)));
+  $("stats").textContent = countAll() + " Positionen · " + forest.length + (forest.length === 1 ? " Struktur · " : " Strukturen · ") + deepest + " Ebenen";
+  updateButtons();
+  renderAnno();
 }
 
+function updateButtons(){
+  const rootSel = selectedId && isRoot(selectedId);
+  $("bDelete").disabled = annoSel ? false : (!selectedId || (rootSel && forest.length < 2));
+  $("bAddSib").disabled = !selectedId || rootSel;
+  $("bFlip").disabled = !selectedId;
+}
+
+function contentBounds(){
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const grow = (x, y, w, h) => {
+    minX = Math.min(minX, x); minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + w); maxY = Math.max(maxY, y + h);
+  };
+  nodeRects.forEach(r => grow(r.x, r.y, r.w, r.h));
+  notes.forEach(n => grow(n.x, n.y, n.w, n.h));
+  arrows.forEach(a => { if (!a.from){ grow(a.x1, a.y1, 0, 0); grow(a.x2, a.y2, 0, 0); } });
+  return isFinite(minX) ? { minX, minY, maxX, maxY } : null;
+}
 function applyView(){
   world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
 }
 function fitView(){
-  const w = edgesEl.width.baseVal.value || 300, h = edgesEl.height.baseVal.value || 200;
+  const b = contentBounds();
+  if (!b) return;
+  const w = b.maxX - b.minX, h = b.maxY - b.minY;
   const sw = stage.clientWidth, sh = stage.clientHeight;
-  view.k = Math.min(1.25, Math.max(0.15, Math.min((sw - 80) / w, (sh - 80) / h)));
-  view.x = (sw - w * view.k) / 2;
-  view.y = Math.max(30, (sh - h * view.k) / 2);
+  view.k = Math.min(1.25, Math.max(0.12, Math.min((sw - 80) / Math.max(w, 1), (sh - 80) / Math.max(h, 1))));
+  view.x = (sw - w * view.k) / 2 - b.minX * view.k;
+  view.y = (sh - h * view.k) / 2 - b.minY * view.k;
   applyView(); save();
 }
 
-/* ── Aktionen ── */
+/* ── Aktionen: Karten ── */
 function select(id){
   selectedId = id;
   nodesEl.querySelectorAll(".node").forEach(el =>
     el.classList.toggle("selected", el.dataset.id === id));
-  $("bDelete").disabled = annoSel ? false : (id === root.id || !id);
-  $("bAddSib").disabled = id === root.id || !id;
+  updateButtons();
 }
 function addChild(){
-  const n = selectedId ? findNode(selectedId) : root;
+  const n = selectedId ? findNode(selectedId) : forest[0];
   if (!n) return;
   pushUndo();
   const c = mkNode("Titel", "Name");
@@ -401,7 +550,7 @@ function addChild(){
   startEdit(c.id, "title");
 }
 function addSibling(){
-  if (!selectedId || selectedId === root.id) return;
+  if (!selectedId || isRoot(selectedId)) return;
   const parent = findParent(selectedId);
   if (!parent) return;
   pushUndo();
@@ -413,16 +562,45 @@ function addSibling(){
   startEdit(c.id, "title");
 }
 function deleteSelected(){
-  if (!selectedId || selectedId === root.id) return;
+  if (!selectedId) return;
   const n = findNode(selectedId);
+  if (!n) return;
   const sub = countNodes(n);
-  if (sub > 1 && !confirm(`Diesen Zweig mit ${sub} Positionen löschen?`)) return;
-  pushUndo();
-  const parent = findParent(selectedId);
-  parent.children = parent.children.filter(c => c.id !== selectedId);
-  selectedId = parent.id;
+  if (isRoot(selectedId)){
+    if (forest.length < 2) return;
+    if (!confirm(`Diese komplette Struktur mit ${sub} Positionen löschen?`)) return;
+    pushUndo();
+    forest.splice(forest.findIndex(t => t.id === selectedId), 1);
+    selectedId = forest[0].id;
+  } else {
+    if (sub > 1 && !confirm(`Diesen Zweig mit ${sub} Positionen löschen?`)) return;
+    pushUndo();
+    const parent = findParent(selectedId);
+    parent.children = parent.children.filter(c => c.id !== selectedId);
+    selectedId = parent.id;
+  }
   render(); save();
 }
+function addTree(){
+  pushUndo();
+  const r = mkNode("Anführer", "Name");
+  const b = contentBounds();
+  if (b) r.ox = b.maxX + 120;
+  forest.push(r);
+  selectedId = r.id;
+  render(); save();
+  startEdit(r.id, "title");
+}
+function flipTree(){
+  if (!selectedId) return;
+  const tree = treeOf(selectedId);
+  if (!tree) return;
+  pushUndo();
+  tree.dir = tree.dir === "up" ? "down" : "up";
+  render(); save();
+}
+
+/* ── Titel/Name bearbeiten ── */
 function fieldEl(id, field){
   return nodesEl.querySelector(`.node[data-id="${id}"] .${field === "title" ? "rank" : "label"}`);
 }
@@ -467,8 +645,6 @@ function finishEdit(commit){
 const findNote = id => notes.find(n => n.id === id);
 const findArrow = id => arrows.find(a => a.id === id);
 
-/* Rechteck eines Ankers in Weltkoordinaten.
-   undefined = Element existiert nicht mehr, null = nur gerade unsichtbar (eingeklappt) */
 function anchorRect(ref){
   if (ref.type === "node"){
     if (!findNode(ref.id)) return undefined;
@@ -477,7 +653,6 @@ function anchorRect(ref){
   const nt = findNote(ref.id);
   return nt ? { x: nt.x, y: nt.y, w: nt.w, h: nt.h } : undefined;
 }
-/* Schnittpunkt der Linie Rechteckmitte -> (tx,ty) mit dem Rechteckrand */
 function edgePoint(rect, tx, ty){
   const cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2;
   const dx = tx - cx, dy = ty - cy;
@@ -487,14 +662,13 @@ function edgePoint(rect, tx, ty){
   const s = Math.min(sx, sy);
   return { x: cx + dx * s, y: cy + dy * s };
 }
-/* Endpunkte eines gebundenen Pfeils: Rand zu Rand, mit kleinem Abstand */
 function arrowPoints(a){
   const ra = anchorRect(a.from), rb = anchorRect(a.to);
   if (!ra || !rb) return null;
   const p1 = edgePoint(ra, rb.x + rb.w / 2, rb.y + rb.h / 2);
   const p2 = edgePoint(rb, ra.x + ra.w / 2, ra.y + ra.h / 2);
   const dx = p2.x - p1.x, dy = p2.y - p1.y, len = Math.hypot(dx, dy) || 1;
-  if (len < 14) return null; // Elemente überlappen – kein sinnvoller Pfeil
+  if (len < 14) return null;
   return { x1: p1.x + dx / len * 5, y1: p1.y + dy / len * 5,
            x2: p2.x - dx / len * 7, y2: p2.y - dy / len * 7 };
 }
@@ -510,35 +684,42 @@ function renderAnno(){
     el.style.top = nt.y + "px";
     el.style.width = nt.w + "px";
     el.style.height = nt.h + "px";
+    if (nt.c != null){
+      const col = `var(--lvl${nt.c})`;
+      el.style.borderColor = col;
+      el.style.borderStyle = "solid";
+      el.style.background = `color-mix(in srgb, ${col} 14%, var(--surface))`;
+    }
     const tx = document.createElement("div");
     tx.className = "ntext";
     tx.textContent = nt.text;
     el.appendChild(tx);
     const rs = document.createElement("div");
     rs.className = "resize";
+    if (nt.c != null) rs.style.borderColor = `var(--lvl${nt.c})`;
     el.appendChild(rs);
     notesLayer.appendChild(el);
   });
-  let svg = `<defs><marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9 z"/></marker></defs>`;
   // Verwaiste Verbindungen entfernen (Karte oder Textfeld wurde gelöscht)
-  arrows = arrows.filter(a => !a.from ||
+  const kept = arrows.filter(a => !a.from ||
     (anchorRect(a.from) !== undefined && anchorRect(a.to) !== undefined));
+  if (kept.length !== arrows.length){ docs[docIdx].arrows = arrows = kept; }
+  let svg = `<defs><marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9 z"/></marker></defs>`;
   arrows.forEach(a => {
     const sel = annoSel && annoSel.type === "arrow" && annoSel.id === a.id;
     let p;
     if (a.from){
       p = arrowPoints(a);
-      if (!p) return; // Endpunkt gerade eingeklappt/unsichtbar
+      if (!p) return;
     } else {
       p = { x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2 };
     }
     svg += `<path class="arrow${sel ? " selected" : ""}" data-id="${a.id}" d="M ${p.x1} ${p.y1} L ${p.x2} ${p.y2}"/>`;
-    if (sel && !a.from){ // nur freie Alt-Pfeile haben verschiebbare Endpunkte
+    if (sel && !a.from){
       svg += `<circle class="handle" data-id="${a.id}" data-end="1" cx="${p.x1}" cy="${p.y1}" r="6"/>`;
       svg += `<circle class="handle" data-id="${a.id}" data-end="2" cx="${p.x2}" cy="${p.y2}" r="6"/>`;
     }
   });
-  // Vorschau während ein neuer Pfeil gezogen wird
   if (drag && drag.bind && drag.cur){
     const ra = anchorRect(drag.bind);
     if (ra){
@@ -548,18 +729,18 @@ function renderAnno(){
   }
   annoEl.innerHTML = svg;
 }
-function selectAnno(sel){
+function setAnnoSel(sel){
   annoSel = sel;
+  $("palette").hidden = !(sel && sel.type === "note");
   if (sel) select(null); else select(selectedId);
   renderAnno();
 }
 function deleteAnno(){
   if (!annoSel) return;
   pushUndo();
-  if (annoSel.type === "note") notes = notes.filter(n => n.id !== annoSel.id);
-  else arrows = arrows.filter(a => a.id !== annoSel.id);
-  annoSel = null;
-  select(selectedId);
+  if (annoSel.type === "note") docs[docIdx].notes = notes = notes.filter(n => n.id !== annoSel.id);
+  else docs[docIdx].arrows = arrows = arrows.filter(a => a.id !== annoSel.id);
+  setAnnoSel(null);
   renderAnno(); save();
 }
 function addNote(){
@@ -568,7 +749,7 @@ function addNote(){
   const c = toWorld(r.left + r.width / 2, r.top + r.height / 2);
   const nt = { id: uid(), x: c.x - 90, y: c.y - 40, w: 180, h: 80, text: "Notiz" };
   notes.push(nt);
-  selectAnno({ type: "note", id: nt.id });
+  setAnnoSel({ type: "note", id: nt.id });
   save();
   startNoteEdit(nt.id);
 }
@@ -595,8 +776,13 @@ function finishNoteEdit(commit){
   }
   renderAnno(); save();
 }
+function setArrowMode(on){
+  arrowMode = on;
+  $("bArrow").classList.toggle("active", on);
+  stage.classList.toggle("arrowmode", on);
+}
 
-/* ── Zeiger: Auswahl, Drag-Umhängen, Pan ── */
+/* ── Zeiger: Auswahl, Ziehen, Pan ── */
 let drag = null;
 const toWorld = (cx, cy) => {
   const r = stage.getBoundingClientRect();
@@ -615,11 +801,10 @@ stage.addEventListener("pointerdown", e => {
   try { stage.setPointerCapture(e.pointerId); } catch(err){}
   const w = toWorld(e.clientX, e.clientY);
 
-  // Pfeilmodus: von einer Karte / einem Textfeld zum Ziel ziehen
   if (arrowMode){
     const srcEl = e.target.closest(".node, .note");
     if (!srcEl){
-      setArrowMode(false); // Klick ins Leere bricht ab
+      setArrowMode(false);
       drag = null;
       return;
     }
@@ -627,29 +812,26 @@ stage.addEventListener("pointerdown", e => {
     renderAnno();
     return;
   }
-  // Endpunkt eines ausgewählten Pfeils verschieben
   const handle = e.target.closest(".handle");
   if (handle){
     pushUndo();
     drag = { arrowEnd: handle.dataset.id, end: handle.dataset.end };
     return;
   }
-  // Pfeil anklicken (gebundene folgen ihren Elementen; nur freie Alt-Pfeile sind verschiebbar)
   const arrowEl = e.target.closest(".arrow");
   if (arrowEl){
     const a = findArrow(arrowEl.dataset.id);
     if (!a) return;
-    selectAnno({ type: "arrow", id: a.id });
+    setAnnoSel({ type: "arrow", id: a.id });
     drag = a.from ? null : { arrowMove: a.id, start: w, orig: { ...a }, moved: false };
     return;
   }
-  // Textfeld: auswählen, verschieben, Größe ändern
   const noteEl = e.target.closest(".note");
   if (noteEl){
     const id = noteEl.dataset.id;
     const nt = findNote(id);
     const wasSelected = annoSel && annoSel.type === "note" && annoSel.id === id;
-    selectAnno({ type: "note", id });
+    setAnnoSel({ type: "note", id });
     if (e.target.closest(".resize")){
       drag = { noteResize: id, start: w, orig: { ...nt }, moved: false };
     } else {
@@ -661,12 +843,12 @@ stage.addEventListener("pointerdown", e => {
   if (nodeEl){
     const id = nodeEl.dataset.id;
     const wasSelected = selectedId === id;
-    if (annoSel) selectAnno(null);
+    if (annoSel) setAnnoSel(null);
     select(id);
-    drag = { id, startX: e.clientX, startY: e.clientY, moved: false, isRoot: id === root.id,
+    drag = { id, startX: e.clientX, startY: e.clientY, moved: false,
              wasSelected, field: e.target.closest(".rank") ? "title" : "name" };
   } else {
-    if (annoSel) selectAnno(null);
+    if (annoSel) setAnnoSel(null);
     drag = { pan: true, startX: e.clientX, startY: e.clientY, vx: view.x, vy: view.y };
     stage.classList.add("panning");
   }
@@ -711,8 +893,8 @@ stage.addEventListener("pointermove", e => {
     }
     renderAnno(); return;
   }
+  // Karten-Drag: Ghost + Ziel hervorheben
   if (!drag.moved && Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) > 6){
-    if (drag.isRoot) { drag = null; return; }
     drag.moved = true;
     const n = findNode(drag.id);
     ghost.textContent = n.title + " · " + n.name;
@@ -746,8 +928,7 @@ stage.addEventListener("pointerup", e => {
       const a = { id: uid(), from: d.bind,
                   to: { type: over.classList.contains("node") ? "node" : "note", id: over.dataset.id } };
       arrows.push(a);
-      annoSel = { type: "arrow", id: a.id };
-      select(null);
+      setAnnoSel({ type: "arrow", id: a.id });
       save();
     }
     setArrowMode(false);
@@ -758,26 +939,41 @@ stage.addEventListener("pointerup", e => {
     if (!d.moved && d.wasSelected && !editingNoteId){ startNoteEdit(d.noteMove); return; }
     save(); return;
   }
+  // Karten-Drag beenden
   nodesEl.querySelector(`.node[data-id="${d.id}"]`)?.classList.remove("dragging");
-  // Klick auf bereits ausgewählten Knoten (ohne Ziehen) öffnet die Bearbeitung
-  if (!d.moved && d.wasSelected && !editingId){
-    startEdit(d.id, d.field);
-    return;
-  }
   const target = nodesEl.querySelector(".droptarget");
   nodesEl.querySelectorAll(".droptarget").forEach(el => el.classList.remove("droptarget"));
-  if (d.moved && target){
+  if (!d.moved){
+    if (d.wasSelected && !editingId) startEdit(d.id, d.field);
+    return;
+  }
+  const dragged = findNode(d.id);
+  if (!dragged) return;
+  if (target){
+    // Auf einer Karte losgelassen: umhängen (auch komplette Strukturen)
     const newParent = findNode(target.dataset.id);
-    const dragged = findNode(d.id);
-    if (newParent && dragged && !isDescendant(newParent.id, dragged)){
+    if (newParent && !isDescendant(newParent.id, dragged)){
       pushUndo();
-      const oldParent = findParent(d.id);
-      oldParent.children = oldParent.children.filter(c => c.id !== d.id);
+      if (isRoot(d.id)){
+        forest.splice(forest.findIndex(t => t.id === d.id), 1);
+        delete dragged.dir;
+      } else {
+        const oldParent = findParent(d.id);
+        oldParent.children = oldParent.children.filter(c => c.id !== d.id);
+      }
+      dragged.ox = 0; dragged.oy = 0;
       newParent.collapsed = false;
       newParent.children.push(dragged);
       render(); save();
       select(d.id);
     }
+  } else {
+    // Ins Leere losgelassen: Karte (samt Zweig) frei verschieben
+    pushUndo();
+    dragged.ox = (dragged.ox || 0) + (e.clientX - d.startX) / view.k;
+    dragged.oy = (dragged.oy || 0) + (e.clientY - d.startY) / view.k;
+    render(); save();
+    select(d.id);
   }
 });
 stage.addEventListener("pointercancel", () => {
@@ -806,7 +1002,6 @@ stage.addEventListener("wheel", e => {
 /* ── Tastatur ── */
 document.addEventListener("keydown", e => {
   if (editingNoteId){
-    // Enter = Zeilenumbruch im Textfeld; Escape beendet die Bearbeitung
     if (e.key === "Escape"){ e.preventDefault(); finishNoteEdit(true); }
     return;
   }
@@ -833,31 +1028,52 @@ document.addEventListener("keydown", e => {
 /* ── Import ── */
 function applyImport(text){
   try {
-    let data = JSON.parse(text);
-    let newNotes = [], newArrows = [];
-    if (data && data.root){
-      // Neues Format: {root, notes, arrows} – alte Exporte sind der Baum direkt
-      newNotes = Array.isArray(data.notes) ? data.notes : [];
-      newArrows = Array.isArray(data.arrows) ? data.arrows : [];
-      data = data.root;
+    const data = JSON.parse(text);
+    if (data && data.version === 2 && Array.isArray(data.docs) && data.docs.length){
+      // Komplette Arbeitsmappe ersetzen
+      data.docs.forEach(d => {
+        d.forest = Array.isArray(d.forest) ? d.forest : [];
+        if (!d.forest.length) d.forest = [mkNode("Anführer", "Name")];
+        d.forest.forEach(t => { fixTree(t); migrate(t); });
+        d.notes = Array.isArray(d.notes) ? d.notes : [];
+        d.arrows = Array.isArray(d.arrows) ? d.arrows : [];
+        d.view = d.view || { x: 60, y: 60, k: 1 };
+        d.name = d.name || "Struktur";
+        d.id = d.id || uid();
+      });
+      docs = data.docs;
+      undoStack = [];
+      $("bUndo").disabled = true;
+      activate(Math.min(data.active || 0, docs.length - 1));
+      save(); fitView();
+      return;
     }
-    if (!data || (typeof data.name !== "string" && typeof data.text !== "string") || !Array.isArray(data.children))
+    // Alte Formate: einzelner Baum ({root,notes,arrows} oder Baum direkt) -> aktuellen Tab ersetzen
+    let tree = data && data.root ? data.root : data;
+    const newNotes = data && Array.isArray(data.notes) ? data.notes : [];
+    const newArrows = data && Array.isArray(data.arrows) ? data.arrows : [];
+    if (!tree || (typeof tree.name !== "string" && typeof tree.text !== "string") || !Array.isArray(tree.children))
       throw new Error("format");
     pushUndo();
-    (function fix(n){ n.id = n.id || uid(); n.collapsed = !!n.collapsed;
-      n.children = Array.isArray(n.children) ? n.children : [];
-      n.children.forEach(fix); })(data);
-    migrate(data);
-    root = data;
-    notes = newNotes; arrows = newArrows; annoSel = null;
-    selectedId = root.id;
-    render(); renderAnno(); save(); fitView();
+    fixTree(tree); migrate(tree);
+    docs[docIdx].forest = forest = [tree];
+    docs[docIdx].notes = notes = newNotes;
+    docs[docIdx].arrows = arrows = newArrows;
+    setAnnoSel(null);
+    selectedId = tree.id;
+    render(); save(); fitView();
   } catch(err) {
     alert("Die Datei ist keine gültige Rangstruktur-JSON. Erwartet wird ein Export aus diesem Programm.");
   }
 }
+function fixTree(n){
+  n.id = n.id || uid();
+  n.collapsed = !!n.collapsed;
+  n.children = Array.isArray(n.children) ? n.children : [];
+  n.children.forEach(fixTree);
+}
 
-/* ── PNG-Export: Szene komplett auf ein Canvas zeichnen ── */
+/* ── PNG-Export (aktueller Tab) ── */
 function roundRect(ctx, x, y, w, h, r){
   if (ctx.roundRect){ ctx.roundRect(x, y, w, h, r); return; }
   const rr = Array.isArray(r) ? r[0] : r;
@@ -883,18 +1099,16 @@ function wrapText(ctx, text, maxW){
   }
   return lines;
 }
-function drawArrowLine(ctx, x1, y1, x2, y2, color, dashed){
+function drawArrowLine(ctx, x1, y1, x2, y2, color){
   const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
   const ux = dx / len, uy = dy / len;
   const head = 11, hw = 4.5;
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
-  ctx.setLineDash(dashed ? [5, 4] : []);
   ctx.beginPath();
   ctx.moveTo(x1, y1);
   ctx.lineTo(x2 - ux * (head - 2), y2 - uy * (head - 2));
   ctx.stroke();
-  ctx.setLineDash([]);
   ctx.fillStyle = color;
   ctx.beginPath();
   ctx.moveTo(x2, y2);
@@ -908,26 +1122,18 @@ function exportPng(){
   const v = name => cs.getPropertyValue(name).trim();
   const FONT = 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif';
 
-  // Sichtbare Tiefe jeder Karte (für die Ebenenfarbe)
   const depthOf = new Map();
-  (function walk(n, d){
-    depthOf.set(n.id, d);
-    if (!n.collapsed) n.children.forEach(c => walk(c, d + 1));
-  })(root, 0);
+  forest.forEach(tree => {
+    (function walk(n, d){
+      depthOf.set(n.id, d);
+      if (!n.collapsed) n.children.forEach(c => walk(c, d + 1));
+    })(tree, 0);
+  });
 
-  // Bildgrenzen: alle Karten, Textfelder und freien Pfeile
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  const grow = (x, y, w = 0, h = 0) => {
-    minX = Math.min(minX, x); minY = Math.min(minY, y);
-    maxX = Math.max(maxX, x + w); maxY = Math.max(maxY, y + h);
-  };
-  nodeRects.forEach(r => grow(r.x, r.y, r.w, r.h));
-  notes.forEach(n => grow(n.x, n.y, n.w, n.h));
-  arrows.forEach(a => { if (!a.from){ grow(a.x1, a.y1); grow(a.x2, a.y2); } });
-  if (!isFinite(minX)) return;
-
+  const b = contentBounds();
+  if (!b) return;
   const pad = 40, scale = 2;
-  const W = maxX - minX + 2 * pad, H = maxY - minY + 2 * pad;
+  const W = b.maxX - b.minX + 2 * pad, H = b.maxY - b.minY + 2 * pad;
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(W * scale);
   canvas.height = Math.round(H * scale);
@@ -935,28 +1141,32 @@ function exportPng(){
   ctx.scale(scale, scale);
   ctx.fillStyle = v("--bg");
   ctx.fillRect(0, 0, W, H);
-  ctx.translate(pad - minX, pad - minY);
+  ctx.translate(pad - b.minX, pad - b.minY);
   ctx.textBaseline = "top";
 
-  // 1) Baum-Verbinder (Winkel wie auf dem Bildschirm)
+  // 1) Verbinder
   ctx.strokeStyle = v("--edge");
   ctx.lineWidth = 1.5;
-  (function edges(n){
-    if (n.collapsed) return;
-    const p = nodeRects.get(n.id);
-    n.children.forEach(c => {
-      const q = nodeRects.get(c.id);
-      if (p && q){
-        const x1 = p.x + p.w / 2, y1 = p.y + p.h;
-        const x2 = q.x + q.w / 2, y2 = q.y;
-        const my = y1 + (y2 - y1) / 2;
-        ctx.beginPath();
-        ctx.moveTo(x1, y1); ctx.lineTo(x1, my); ctx.lineTo(x2, my); ctx.lineTo(x2, y2);
-        ctx.stroke();
-      }
-      edges(c);
-    });
-  })(root);
+  forest.forEach(tree => {
+    const up = tree.dir === "up";
+    (function edges(n){
+      if (n.collapsed) return;
+      const p = nodeRects.get(n.id);
+      n.children.forEach(c => {
+        const q = nodeRects.get(c.id);
+        if (p && q){
+          const x1 = p.x + p.w / 2, x2 = q.x + q.w / 2;
+          const y1 = up ? p.y : p.y + p.h;
+          const y2 = up ? q.y + q.h : q.y;
+          const my = y1 + (y2 - y1) / 2;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1); ctx.lineTo(x1, my); ctx.lineTo(x2, my); ctx.lineTo(x2, y2);
+          ctx.stroke();
+        }
+        edges(c);
+      });
+    })(tree);
+  });
 
   // 2) Namenskarten
   nodeRects.forEach((r, id) => {
@@ -981,13 +1191,22 @@ function exportPng(){
     });
   });
 
-  // 3) Textfelder
+  // 3) Textfelder (mit gewählter Farbe)
   notes.forEach(nt => {
+    const col = nt.c != null ? v("--lvl" + nt.c) : null;
     ctx.fillStyle = v("--surface");
-    ctx.strokeStyle = v("--edge");
+    ctx.strokeStyle = col || v("--edge");
     ctx.lineWidth = 1;
-    ctx.setLineDash([5, 4]);
-    ctx.beginPath(); roundRect(ctx, nt.x, nt.y, nt.w, nt.h, 6); ctx.fill(); ctx.stroke();
+    ctx.setLineDash(col ? [] : [5, 4]);
+    ctx.beginPath(); roundRect(ctx, nt.x, nt.y, nt.w, nt.h, 6); ctx.fill();
+    if (col){
+      ctx.save();
+      ctx.globalAlpha = 0.14;
+      ctx.fillStyle = col;
+      ctx.beginPath(); roundRect(ctx, nt.x, nt.y, nt.w, nt.h, 6); ctx.fill();
+      ctx.restore();
+    }
+    ctx.beginPath(); roundRect(ctx, nt.x, nt.y, nt.w, nt.h, 6); ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = v("--ink");
     ctx.font = "400 13px " + FONT;
@@ -1003,7 +1222,7 @@ function exportPng(){
     let p;
     if (a.from){ p = arrowPoints(a); if (!p) return; }
     else p = { x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2 };
-    drawArrowLine(ctx, p.x1, p.y1, p.x2, p.y2, accent, false);
+    drawArrowLine(ctx, p.x1, p.y1, p.x2, p.y2, accent);
   });
 
   const dataUrl = canvas.toDataURL("image/png");
@@ -1019,25 +1238,42 @@ function exportPng(){
 $("bAddChild").addEventListener("click", addChild);
 $("bAddSib").addEventListener("click", addSibling);
 $("bDelete").addEventListener("click", () => { if (annoSel) deleteAnno(); else deleteSelected(); });
+$("bAddTree").addEventListener("click", addTree);
+$("bFlip").addEventListener("click", flipTree);
 $("bNote").addEventListener("click", addNote);
-function setArrowMode(on){
-  arrowMode = on;
-  $("bArrow").classList.toggle("active", on);
-  stage.classList.toggle("arrowmode", on);
-}
 $("bArrow").addEventListener("click", () => setArrowMode(!arrowMode));
 $("bUndo").addEventListener("click", undo);
 $("bFit").addEventListener("click", fitView);
+$("bPng").addEventListener("click", exportPng);
+$("bNewTab").addEventListener("click", () => {
+  docs.push(mkDoc("Struktur " + (docs.length + 1)));
+  activate(docs.length - 1);
+  save();
+});
+document.querySelectorAll("#palette .chip").forEach(chip => {
+  chip.addEventListener("click", () => {
+    if (!annoSel || annoSel.type !== "note") return;
+    const nt = findNote(annoSel.id);
+    if (!nt) return;
+    pushUndo();
+    if (chip.dataset.c === "") delete nt.c;
+    else nt.c = +chip.dataset.c;
+    renderAnno(); save();
+  });
+});
 $("bNew").addEventListener("click", () => {
-  if (!confirm("Alles verwerfen und neu beginnen?")) return;
+  if (!confirm(`Tab "${docs[docIdx].name}" leeren und neu beginnen?`)) return;
   pushUndo();
-  root = mkNode("Anführer", "Name");
-  notes = []; arrows = []; annoSel = null;
-  selectedId = root.id;
-  render(); renderAnno(); save(); fitView();
+  const r = mkNode("Anführer", "Name");
+  docs[docIdx].forest = forest = [r];
+  docs[docIdx].notes = notes = [];
+  docs[docIdx].arrows = arrows = [];
+  setAnnoSel(null);
+  selectedId = r.id;
+  render(); save(); fitView();
 });
 $("bExport").addEventListener("click", () => {
-  const text = JSON.stringify({ root, notes, arrows }, null, 2);
+  const text = JSON.stringify({ version: 2, active: docIdx, docs }, null, 2);
   const api = hostApi();
   if (api){ api.export_json(text).catch(() => alert("Export fehlgeschlagen.")); return; }
   const a = document.createElement("a");
@@ -1045,7 +1281,6 @@ $("bExport").addEventListener("click", () => {
   a.download = "rangstruktur.json";
   a.click();
 });
-$("bPng").addEventListener("click", exportPng);
 $("bImport").addEventListener("click", () => {
   const api = hostApi();
   if (api){
@@ -1070,33 +1305,49 @@ async function init(){
   const api = hostApi();
   try {
     raw = api ? await api.load_data() : localStorage.getItem(STORE_KEY);
+    if (!raw && !api) raw = localStorage.getItem(OLD_KEY);
   } catch(e){}
   let hadData = false;
   try {
     if (raw){
       const data = JSON.parse(raw);
-      root = data.root;
-      notes = Array.isArray(data.notes) ? data.notes : [];
-      arrows = Array.isArray(data.arrows) ? data.arrows : [];
-      if (data.view) view = data.view;
-      hadData = true;
+      if (data.version === 2 && Array.isArray(data.docs) && data.docs.length){
+        docs = data.docs;
+        docIdx = Math.min(data.active || 0, docs.length - 1);
+        hadData = true;
+      } else if (data.root){
+        // Altes Ein-Struktur-Format übernehmen
+        const d = mkDoc("Struktur 1");
+        d.forest = [data.root];
+        d.notes = Array.isArray(data.notes) ? data.notes : [];
+        d.arrows = Array.isArray(data.arrows) ? data.arrows : [];
+        if (data.view) d.view = data.view;
+        docs = [d];
+        docIdx = 0;
+        hadData = true;
+      }
     }
   } catch(e){}
-  if (root && Array.isArray(root.children)) migrate(root);
-  if (!root || typeof root.name !== "string"){ root = defaultTree(); hadData = false; }
-  selectedId = root.id;
+  if (!docs.length){ docs = [defaultDoc()]; docIdx = 0; }
+  docs.forEach(d => {
+    d.forest = Array.isArray(d.forest) ? d.forest : [];
+    if (!d.forest.length) d.forest = [mkNode("Anführer", "Name")];
+    d.forest.forEach(t => { fixTree(t); migrate(t); });
+    d.notes = Array.isArray(d.notes) ? d.notes : [];
+    d.arrows = Array.isArray(d.arrows) ? d.arrows : [];
+    d.view = d.view || { x: 60, y: 60, k: 1 };
+  });
   $("bUndo").disabled = true;
-  render(); renderAnno();
-  if (hadData) applyView(); else fitView();
+  activate(docIdx);
+  if (!hadData) fitView();
   window.addEventListener("resize", applyView);
 }
-// In der Desktop-App erst starten, wenn die Python-Brücke bereit ist
 if (window.pywebview) init();
 else {
   let started = false;
   const go = () => { if (!started){ started = true; init(); } };
   window.addEventListener("pywebviewready", go);
-  setTimeout(go, 700); // Browser-Fallback ohne pywebview
+  setTimeout(go, 700);
 }
 </script>
 </body>
