@@ -195,6 +195,7 @@ footer kbd{
 <header>
   <h1>Rang<span>struktur</span></h1>
   <button class="btn primary" id="bAddChild" title="Untergebenen hinzufügen (Tab)">+ Untergeordnet</button>
+  <button class="btn" id="bAddParent" title="Übergeordneten über der Auswahl einfügen, z. B. Eltern (Shift+Tab)">+ Übergeordnet</button>
   <button class="btn" id="bAddSib" title="Gleichrangigen hinzufügen (Enter)">+ Gleichrangig</button>
   <button class="btn" id="bPartner" title="Partner auf derselben Karte hinzufügen / entfernen (z. B. Ehepaar im Stammbaum)">⚭ Partner</button>
   <button class="btn danger" id="bDelete" title="Auswahl löschen (Entf)">Löschen</button>
@@ -254,6 +255,7 @@ footer kbd{
 <footer>
   <span><kbd>Klick</kbd> auswählen, nochmal klicken: bearbeiten</span>
   <span><kbd>Tab</kbd> untergeordnet</span>
+  <span><kbd>Shift+Tab</kbd> übergeordnet</span>
   <span><kbd>Enter</kbd> gleichrangig</span>
   <span><kbd>Entf</kbd> löschen</span>
   <span><kbd>Ziehen</kbd> auf Karte: umhängen · ins Leere: verschieben</span>
@@ -540,6 +542,7 @@ function updateButtons(){
   $("bDelete").disabled = annoSel ? false : (!selectedId || (rootSel && forest.length < 2));
   $("bAddSib").disabled = !selectedId || rootSel;
   $("bFlip").disabled = !selectedId;
+  $("bAddParent").disabled = !selectedId;
   const selNode = selectedId ? findNode(selectedId) : null;
   $("bPartner").disabled = !selNode;
   $("bPartner").textContent = selNode && selNode.partner ? "⚭ Partner entfernen" : "⚭ Partner";
@@ -599,6 +602,30 @@ function addSibling(){
   selectedId = c.id;
   render(); save();
   startEdit(c.id, "title");
+}
+function addParent(){
+  if (!selectedId) return;
+  const n = findNode(selectedId);
+  if (!n) return;
+  pushUndo();
+  const p = mkNode("Titel", "Name");
+  const parent = findParent(selectedId);
+  if (parent){
+    // Zwischen Auswahl und bisherigem Vorgesetzten einketten
+    const i = parent.children.findIndex(c => c.id === n.id);
+    parent.children[i] = p;
+  } else {
+    // Auswahl ist eine Wurzel: neue Karte wird neue Spitze der Struktur
+    const i = forest.findIndex(t => t.id === n.id);
+    forest[i] = p;
+    if (n.dir){ p.dir = n.dir; delete n.dir; }
+  }
+  if (n.ox){ p.ox = n.ox; n.ox = 0; }
+  if (n.oy){ p.oy = n.oy; n.oy = 0; }
+  p.children.push(n);
+  selectedId = p.id;
+  render(); save();
+  startEdit(p.id, "title");
 }
 function deleteSelected(){
   if (!selectedId) return;
@@ -1127,7 +1154,7 @@ document.addEventListener("keydown", e => {
   if (e.target instanceof Element && e.target.closest("input,button")) {
     if (e.key !== "Tab") return;
   }
-  if (e.key === "Tab"){ e.preventDefault(); addChild(); }
+  if (e.key === "Tab"){ e.preventDefault(); if (e.shiftKey) addParent(); else addChild(); }
   else if (e.key === "Enter"){ e.preventDefault(); addSibling(); }
   else if (e.key === "Delete" || e.key === "Backspace"){ e.preventDefault(); if (annoSel) deleteAnno(); else deleteSelected(); }
   else if (e.key === "F2"){ e.preventDefault(); if (selectedId) startEdit(selectedId, "title"); }
@@ -1390,6 +1417,7 @@ function exportPng(){
 
 /* ── Toolbar ── */
 $("bAddChild").addEventListener("click", addChild);
+$("bAddParent").addEventListener("click", addParent);
 $("bAddSib").addEventListener("click", addSibling);
 $("bPartner").addEventListener("click", togglePartner);
 $("bDelete").addEventListener("click", () => { if (annoSel) deleteAnno(); else deleteSelected(); });
