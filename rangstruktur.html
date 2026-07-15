@@ -78,13 +78,18 @@ header h1 span{color:var(--accent)}
 }
 .mini:hover{border-color:var(--accent); color:var(--accent)}
 .mini.on{background:var(--accent); color:var(--accent-ink); border-color:var(--accent)}
+.mini:disabled{opacity:.35; cursor:default; pointer-events:none}
+#childOf{display:flex; align-items:center; gap:4px}
+#childOf[hidden]{display:none}
+#childOf .lbl{font-size:11px; color:var(--ink-soft); margin-right:2px}
 /* ── Canvas ──────────────────────────── */
-#stage{flex:1; position:relative; overflow:hidden; cursor:grab; touch-action:none;
+#stage{flex:1; position:relative; overflow:hidden; cursor:default; touch-action:none;
   background-image:radial-gradient(var(--line) 1px, transparent 1px);
   background-size:26px 26px;
 }
 #stage.panning{cursor:grabbing}
 #stage.arrowmode{cursor:crosshair}
+#stage.drawmode{cursor:crosshair}
 #world{position:absolute; top:0; left:0; transform-origin:0 0}
 #edges{position:absolute; top:0; left:0; overflow:visible; pointer-events:none}
 #edges path{fill:none; stroke:var(--edge); stroke-width:1.5px}
@@ -128,6 +133,8 @@ header h1 span{color:var(--accent)}
 #anno .arrow.selected{stroke-width:3}
 #anno .arrow.preview{stroke-dasharray:5 4}
 #anno .arrow.both{marker-start:url(#ah)}
+#anno .arrow.noend{marker-end:none}
+#anno .arrow.shared{pointer-events:none}
 #anno marker path{fill:var(--accent); stroke:none}
 #anno .handle{fill:var(--surface); stroke:var(--accent); stroke-width:1.5; pointer-events:all; cursor:move}
 #notesLayer{position:absolute; top:0; left:0}
@@ -198,6 +205,12 @@ footer kbd{
   <button class="btn" id="bAddParent" title="Übergeordneten über der Auswahl einfügen, z. B. Eltern (Shift+Tab)">+ Übergeordnet</button>
   <button class="btn" id="bAddSib" title="Gleichrangigen hinzufügen (Enter)">+ Gleichrangig</button>
   <button class="btn" id="bPartner" title="Partner auf derselben Karte hinzufügen / entfernen (z. B. Ehepaar im Stammbaum)">⚭ Partner</button>
+  <span id="childOf" hidden>
+    <span class="lbl">Kind von:</span>
+    <button class="mini" data-of="a" title="Verbindung startet unter der linken Person">Links</button>
+    <button class="mini" data-of="" title="Verbindung startet mittig (gemeinsames Kind)">Beiden</button>
+    <button class="mini" data-of="b" title="Verbindung startet unter der rechten Person">Rechts</button>
+  </span>
   <button class="btn danger" id="bDelete" title="Auswahl löschen (Entf)">Löschen</button>
   <div class="sep"></div>
   <button class="btn" id="bAddTree" title="Weitere, unabhängige Struktur auf dieser Fläche anlegen">+ Struktur</button>
@@ -205,6 +218,7 @@ footer kbd{
   <div class="sep"></div>
   <button class="btn" id="bNote" title="Freies Textfeld einfügen (verschieben: ziehen, Größe: Ecke unten rechts)">+ Textfeld</button>
   <button class="btn" id="bArrow" title="Pfeil verbinden: aktivieren, dann von einer Karte / einem Textfeld zum Ziel ziehen">↗ Pfeil</button>
+  <button class="btn" id="bDraw" title="Pfeil frei mit der Maus malen">✏ Malen</button>
   <span id="palette" hidden>
     <button class="chip" data-c="" title="Standard"></button>
     <button class="chip" data-c="0" style="--chip:var(--nc0)" title="Blau"></button>
@@ -273,7 +287,7 @@ const H_GAP = 28, V_GAP = 64;
 let docs = [], docIdx = 0;
 let forest, notes, arrows, view;          // Aliase auf docs[docIdx]
 let selectedId = null, editingId = null;
-let annoSel = null, editingNoteId = null, arrowMode = false;
+let annoSel = null, editingNoteId = null, arrowMode = false, drawMode = false;
 let nodeRects = new Map();                // Weltkoordinaten sichtbarer Karten
 let undoStack = [];
 
@@ -511,7 +525,9 @@ function render(){
       n.children.forEach(c => {
         const q = nodeRects.get(c.id);
         if (p && q){
-          const x1 = p.x + p.w / 2, x2 = q.x + q.w / 2;
+          // Bei Paar-Karten: Linie startet unter der zuständigen Person
+          const frac = n.partner ? (c.of === "a" ? 0.25 : c.of === "b" ? 0.75 : 0.5) : 0.5;
+          const x1 = p.x + p.w * frac, x2 = q.x + q.w / 2;
           const y1 = up ? p.y : p.y + p.h;
           const y2 = up ? q.y + q.h : q.y;
           const my = y1 + (y2 - y1) / 2;
@@ -546,6 +562,15 @@ function updateButtons(){
   const selNode = selectedId ? findNode(selectedId) : null;
   $("bPartner").disabled = !selNode;
   $("bPartner").textContent = selNode && selNode.partner ? "⚭ Partner entfernen" : "⚭ Partner";
+  // "Kind von": nur zeigen, wenn der Vorgesetzte eine Paar-Karte ist
+  const par = selectedId ? findParent(selectedId) : null;
+  const showOf = !!(par && par.partner && selNode);
+  $("childOf").hidden = !showOf;
+  if (showOf){
+    const cur = selNode.of || "";
+    document.querySelectorAll("#childOf .mini").forEach(b =>
+      b.classList.toggle("on", (b.dataset.of || "") === cur));
+  }
 }
 
 function contentBounds(){
@@ -556,7 +581,10 @@ function contentBounds(){
   };
   nodeRects.forEach(r => grow(r.x, r.y, r.w, r.h));
   notes.forEach(n => grow(n.x, n.y, n.w, n.h));
-  arrows.forEach(a => { if (!a.from){ grow(a.x1, a.y1, 0, 0); grow(a.x2, a.y2, 0, 0); } });
+  arrows.forEach(a => {
+    if (a.pts){ a.pts.forEach(q => grow(q[0], q[1], 0, 0)); }
+    else if (!a.from){ grow(a.x1, a.y1, 0, 0); grow(a.x2, a.y2, 0, 0); }
+  });
   return isFinite(minX) ? { minX, minY, maxX, maxY } : null;
 }
 function applyView(){
@@ -752,36 +780,166 @@ function edgePoint(rect, tx, ty){
   const s = Math.min(sx, sy);
   return { x: cx + dx * s, y: cy + dy * s };
 }
-function arrowPoints(a){
-  const ra = anchorRect(a.from), rb = anchorRect(a.to);
-  if (!ra || !rb) return null;
-  const p1 = edgePoint(ra, rb.x + rb.w / 2, rb.y + rb.h / 2);
-  const p2 = edgePoint(rb, ra.x + ra.w / 2, ra.y + ra.h / 2);
-  const dx = p2.x - p1.x, dy = p2.y - p1.y, len = Math.hypot(dx, dy) || 1;
-  if (len < 14) return null;
-  const s1 = a.both ? 7 : 5;
-  return { x1: p1.x + dx / len * s1, y1: p1.y + dy / len * s1,
-           x2: p2.x - dx / len * 7, y2: p2.y - dy / len * 7 };
+/* ── Pfeil-Geometrie: Anker, Ausweichen, Zusammenführen ── */
+function anchorPt(rect, an){
+  return { x: rect.x + an.rx * rect.w, y: rect.y + an.ry * rect.h };
 }
-/* Pfad eines Pfeils je nach Stil: gerade, kurvig oder rechtwinklig */
-function arrowPathD(a, p){
-  const st = (a && a.style) || "straight";
-  if (st === "curve"){
-    const dx = p.x2 - p.x1, dy = p.y2 - p.y1, len = Math.hypot(dx, dy) || 1;
-    const bend = Math.min(60, len * 0.25);
-    const cx = (p.x1 + p.x2) / 2 - dy / len * bend;
-    const cy = (p.y1 + p.y2) / 2 + dx / len * bend;
-    return `M ${p.x1} ${p.y1} Q ${cx} ${cy} ${p.x2} ${p.y2}`;
+function projectToBorder(rect, x, y){
+  const px = Math.max(rect.x, Math.min(rect.x + rect.w, x));
+  const py = Math.max(rect.y, Math.min(rect.y + rect.h, y));
+  const dl = px - rect.x, dr = rect.x + rect.w - px;
+  const dt = py - rect.y, db = rect.y + rect.h - py;
+  const m = Math.min(dl, dr, dt, db);
+  let bx = px, by = py;
+  if (m === dl) bx = rect.x;
+  else if (m === dr) bx = rect.x + rect.w;
+  else if (m === dt) by = rect.y;
+  else by = rect.y + rect.h;
+  return { rx: (bx - rect.x) / rect.w, ry: (by - rect.y) / rect.h };
+}
+function quadPts(p1, c, p2, n = 20){
+  const pts = [];
+  for (let i = 0; i <= n; i++){
+    const t = i / n, u = 1 - t;
+    pts.push([u*u*p1.x + 2*u*t*c.x + t*t*p2.x, u*u*p1.y + 2*u*t*c.y + t*t*p2.y]);
   }
-  if (st === "elbow"){
-    if (Math.abs(p.y2 - p.y1) >= Math.abs(p.x2 - p.x1)){
-      const my = (p.y1 + p.y2) / 2;
-      return `M ${p.x1} ${p.y1} L ${p.x1} ${my} L ${p.x2} ${my} L ${p.x2} ${p.y2}`;
+  return pts;
+}
+function ctrlFor(p1, p2, bend){
+  const dx = p2.x - p1.x, dy = p2.y - p1.y, len = Math.hypot(dx, dy) || 1;
+  return { x: (p1.x + p2.x) / 2 - dy / len * bend, y: (p1.y + p2.y) / 2 + dx / len * bend };
+}
+function segBlocked(x1, y1, x2, y2, rects){
+  const len = Math.hypot(x2 - x1, y2 - y1);
+  const steps = Math.max(2, Math.ceil(len / 10));
+  for (let i = 0; i <= steps; i++){
+    const t = i / steps, x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t;
+    for (const r of rects){
+      if (x > r.x - 4 && x < r.x + r.w + 4 && y > r.y - 4 && y < r.y + r.h + 4) return true;
     }
-    const mx = (p.x1 + p.x2) / 2;
-    return `M ${p.x1} ${p.y1} L ${mx} ${p.y1} L ${mx} ${p.y2} L ${p.x2} ${p.y2}`;
   }
-  return `M ${p.x1} ${p.y1} L ${p.x2} ${p.y2}`;
+  return false;
+}
+function ptsBlocked(pts, rects){
+  for (let i = 1; i < pts.length; i++){
+    if (segBlocked(pts[i-1][0], pts[i-1][1], pts[i][0], pts[i][1], rects)) return true;
+  }
+  return false;
+}
+function obstaclesFor(excludeIds){
+  const out = [];
+  nodeRects.forEach((r, id) => { if (!excludeIds.has(id)) out.push(r); });
+  notes.forEach(nt => { if (!excludeIds.has(nt.id)) out.push({ x: nt.x, y: nt.y, w: nt.w, h: nt.h }); });
+  return out;
+}
+/* Weg zwischen zwei Punkten suchen, der Karten und Textfelder umgeht */
+function routeSeg(p1, p2, style, obstacles){
+  const len = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+  const base = Math.min(60, len * 0.25);
+  const cands = style === "curve"
+    ? [base, -base, base * 1.8, -base * 1.8, base * 2.6, -base * 2.6]
+    : [0, base, -base, base * 1.8, -base * 1.8, base * 2.6, -base * 2.6];
+  for (const b of cands){
+    const pts = b ? quadPts(p1, ctrlFor(p1, p2, b), p2) : [[p1.x, p1.y], [p2.x, p2.y]];
+    if (!ptsBlocked(pts, obstacles)) return pts;
+  }
+  const b0 = style === "curve" ? base : 0;
+  return b0 ? quadPts(p1, ctrlFor(p1, p2, b0), p2) : [[p1.x, p1.y], [p2.x, p2.y]];
+}
+function elbowPts(p1, p2){
+  if (Math.abs(p2.y - p1.y) >= Math.abs(p2.x - p1.x)){
+    const my = (p1.y + p2.y) / 2;
+    return [[p1.x, p1.y], [p1.x, my], [p2.x, my], [p2.x, p2.y]];
+  }
+  const mx = (p1.x + p2.x) / 2;
+  return [[p1.x, p1.y], [mx, p1.y], [mx, p2.y], [p2.x, p2.y]];
+}
+function trimPts(pts, startTrim, endTrim){
+  const cut = (arr, amount) => {
+    let rest = amount;
+    while (arr.length > 1 && rest > 0){
+      const [ax, ay] = arr[0], [bx, by] = arr[1];
+      const d = Math.hypot(bx - ax, by - ay);
+      if (d <= rest){ arr.shift(); rest -= d; }
+      else {
+        const t = rest / d;
+        arr[0] = [ax + (bx - ax) * t, ay + (by - ay) * t];
+        rest = 0;
+      }
+    }
+  };
+  const p = pts.map(q => [q[0], q[1]]);
+  cut(p, startTrim);
+  p.reverse(); cut(p, endTrim); p.reverse();
+  return p;
+}
+/* Alle Pfeile in Linienzüge übersetzen (für Bildschirm und PNG identisch).
+   Pfeile mit gemeinsamem Ziel laufen vor dem Ziel zusammen (eine Spitze). */
+function arrowShapes(){
+  const shapes = [];
+  const groups = new Map();
+  arrows.forEach(a => {
+    if (!a.from || a.both || a.toAnchor || a.style === "draw") return;
+    const k = a.to.type + ":" + a.to.id;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(a);
+  });
+  const merged = new Set();
+  groups.forEach(list => {
+    if (list.length < 2) return;
+    const rb = anchorRect(list[0].to);
+    if (!rb) return;
+    const items = [];
+    list.forEach(a => {
+      const ra = anchorRect(a.from);
+      if (!ra) return;
+      const p1 = a.fromAnchor ? anchorPt(ra, a.fromAnchor)
+        : edgePoint(ra, rb.x + rb.w / 2, rb.y + rb.h / 2);
+      items.push({ a, p1 });
+    });
+    if (items.length < 2) return;
+    const avg = { x: items.reduce((s, i) => s + i.p1.x, 0) / items.length,
+                  y: items.reduce((s, i) => s + i.p1.y, 0) / items.length };
+    const pB = edgePoint(rb, avg.x, avg.y);
+    const dl = Math.hypot(avg.x - pB.x, avg.y - pB.y) || 1;
+    const J = { x: pB.x + (avg.x - pB.x) / dl * 34, y: pB.y + (avg.y - pB.y) / dl * 34 };
+    items.forEach(({ a, p1 }) => {
+      merged.add(a.id);
+      const obstacles = obstaclesFor(new Set([a.from.id, a.to.id]));
+      let pts = a.style === "elbow" ? elbowPts(p1, J) : routeSeg(p1, J, a.style, obstacles);
+      pts = trimPts(pts, 5, 0);
+      shapes.push({ id: a.id, pts, headEnd: false, headStart: false,
+                    handleFrom: pts[0], handleTo: [pB.x, pB.y] });
+    });
+    shapes.push({ id: null, pts: trimPts([[J.x, J.y], [pB.x, pB.y]], 0, 7),
+                  headEnd: true, headStart: false, shared: true });
+  });
+  arrows.forEach(a => {
+    if (a.from && merged.has(a.id)) return;
+    if (a.pts){
+      shapes.push({ id: a.id, pts: a.pts, headEnd: true, headStart: !!a.both });
+      return;
+    }
+    if (!a.from){
+      shapes.push({ id: a.id, pts: [[a.x1, a.y1], [a.x2, a.y2]], headEnd: true, headStart: !!a.both, legacy: true });
+      return;
+    }
+    const ra = anchorRect(a.from), rb = anchorRect(a.to);
+    if (!ra || !rb) return;
+    const refA = a.fromAnchor ? anchorPt(ra, a.fromAnchor) : null;
+    const refB = a.toAnchor ? anchorPt(rb, a.toAnchor) : null;
+    const cA = refA || { x: ra.x + ra.w / 2, y: ra.y + ra.h / 2 };
+    const cB = refB || { x: rb.x + rb.w / 2, y: rb.y + rb.h / 2 };
+    const p1 = refA || edgePoint(ra, cB.x, cB.y);
+    const p2 = refB || edgePoint(rb, cA.x, cA.y);
+    if (Math.hypot(p2.x - p1.x, p2.y - p1.y) < 14) return;
+    const obstacles = obstaclesFor(new Set([a.from.id, a.to.id]));
+    let pts = a.style === "elbow" ? elbowPts(p1, p2) : routeSeg(p1, p2, a.style, obstacles);
+    pts = trimPts(pts, a.both ? 7 : 5, 7);
+    shapes.push({ id: a.id, pts, headEnd: true, headStart: !!a.both,
+                  handleFrom: pts[0], handleTo: pts[pts.length - 1] });
+  });
+  return shapes;
 }
 
 function renderAnno(){
@@ -816,19 +974,23 @@ function renderAnno(){
     (anchorRect(a.from) !== undefined && anchorRect(a.to) !== undefined));
   if (kept.length !== arrows.length){ docs[docIdx].arrows = arrows = kept; }
   let svg = `<defs><marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9 z"/></marker></defs>`;
-  arrows.forEach(a => {
-    const sel = annoSel && annoSel.type === "arrow" && annoSel.id === a.id;
-    let p;
-    if (a.from){
-      p = arrowPoints(a);
-      if (!p) return;
-    } else {
-      p = { x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2 };
+  const toD = pts => "M " + pts.map(p => p[0] + " " + p[1]).join(" L ");
+  arrowShapes().forEach(s => {
+    if (s.shared){
+      svg += `<path class="arrow shared" d="${toD(s.pts)}"/>`;
+      return;
     }
-    svg += `<path class="arrow${sel ? " selected" : ""}${a.both ? " both" : ""}" data-id="${a.id}" d="${arrowPathD(a, p)}"/>`;
-    if (sel && !a.from){
-      svg += `<circle class="handle" data-id="${a.id}" data-end="1" cx="${p.x1}" cy="${p.y1}" r="6"/>`;
-      svg += `<circle class="handle" data-id="${a.id}" data-end="2" cx="${p.x2}" cy="${p.y2}" r="6"/>`;
+    const sel = annoSel && annoSel.type === "arrow" && annoSel.id === s.id;
+    svg += `<path class="arrow${sel ? " selected" : ""}${s.headStart ? " both" : ""}${s.headEnd ? "" : " noend"}" data-id="${s.id}" d="${toD(s.pts)}"/>`;
+    if (sel){
+      const a = findArrow(s.id);
+      if (a && a.from){
+        svg += `<circle class="handle" data-id="${a.id}" data-end="from" cx="${s.handleFrom[0]}" cy="${s.handleFrom[1]}" r="6"/>`;
+        svg += `<circle class="handle" data-id="${a.id}" data-end="to" cx="${s.handleTo[0]}" cy="${s.handleTo[1]}" r="6"/>`;
+      } else if (a && !a.pts){
+        svg += `<circle class="handle" data-id="${a.id}" data-end="1" cx="${s.pts[0][0]}" cy="${s.pts[0][1]}" r="6"/>`;
+        svg += `<circle class="handle" data-id="${a.id}" data-end="2" cx="${s.pts[1][0]}" cy="${s.pts[1][1]}" r="6"/>`;
+      }
     }
   });
   if (drag && drag.bind && drag.cur){
@@ -837,6 +999,20 @@ function renderAnno(){
       const p1 = edgePoint(ra, drag.cur.x, drag.cur.y);
       svg += `<path class="arrow preview" d="M ${p1.x} ${p1.y} L ${drag.cur.x} ${drag.cur.y}"/>`;
     }
+  }
+  if (drag && drag.rebind && drag.cur){
+    const a = findArrow(drag.rebind);
+    if (a){
+      const orect = anchorRect(drag.end === "from" ? a.to : a.from);
+      if (orect){
+        const anch = drag.end === "from" ? a.toAnchor : a.fromAnchor;
+        const p0 = anch ? anchorPt(orect, anch) : edgePoint(orect, drag.cur.x, drag.cur.y);
+        svg += `<path class="arrow preview" d="M ${p0.x} ${p0.y} L ${drag.cur.x} ${drag.cur.y}"/>`;
+      }
+    }
+  }
+  if (drag && drag.draw && drag.pts && drag.pts.length > 1){
+    svg += `<path class="arrow preview" d="${toD(drag.pts)}"/>`;
   }
   annoEl.innerHTML = svg;
 }
@@ -851,9 +1027,12 @@ function setAnnoSel(sel){
 function updateArrowOpts(){
   const a = annoSel && annoSel.type === "arrow" ? findArrow(annoSel.id) : null;
   if (!a) return;
+  const isDraw = !!a.pts;
   const st = a.style || "straight";
-  document.querySelectorAll("#arrowOpts .mini[data-style]").forEach(b =>
-    b.classList.toggle("on", b.dataset.style === st));
+  document.querySelectorAll("#arrowOpts .mini[data-style]").forEach(b => {
+    b.disabled = isDraw; // gemalte Pfeile behalten ihre Form
+    b.classList.toggle("on", !isDraw && b.dataset.style === st);
+  });
   $("bBoth").classList.toggle("on", !!a.both);
 }
 function deleteAnno(){
@@ -901,6 +1080,13 @@ function setArrowMode(on){
   arrowMode = on;
   $("bArrow").classList.toggle("active", on);
   stage.classList.toggle("arrowmode", on);
+  if (on && drawMode) setDrawMode(false);
+}
+function setDrawMode(on){
+  drawMode = on;
+  $("bDraw").classList.toggle("active", on);
+  stage.classList.toggle("drawmode", on);
+  if (on && arrowMode) setArrowMode(false);
 }
 
 /* ── Zeiger: Auswahl, Ziehen, Pan ── */
@@ -909,7 +1095,18 @@ const toWorld = (cx, cy) => {
   const r = stage.getBoundingClientRect();
   return { x: (cx - r.left - view.x) / view.k, y: (cy - r.top - view.y) / view.k };
 };
+stage.addEventListener("mousedown", e => {
+  if (e.button === 1) e.preventDefault(); // Autoscroll des Browsers unterbinden
+});
 stage.addEventListener("pointerdown", e => {
+  if (e.button === 1){
+    // Mittlere Maustaste: Fläche verschieben
+    e.preventDefault();
+    try { stage.setPointerCapture(e.pointerId); } catch(err){}
+    drag = { pan: true, startX: e.clientX, startY: e.clientY, vx: view.x, vy: view.y };
+    stage.classList.add("panning");
+    return;
+  }
   if (e.button !== 0) return;
   if (editingId){
     if (e.target.closest(".label,.rank") && e.target.closest(".node")?.dataset.id === editingId) return;
@@ -922,6 +1119,10 @@ stage.addEventListener("pointerdown", e => {
   try { stage.setPointerCapture(e.pointerId); } catch(err){}
   const w = toWorld(e.clientX, e.clientY);
 
+  if (drawMode){
+    drag = { draw: true, pts: [[w.x, w.y]] };
+    return;
+  }
   if (arrowMode){
     const srcEl = e.target.closest(".node, .note");
     if (!srcEl){
@@ -935,6 +1136,11 @@ stage.addEventListener("pointerdown", e => {
   }
   const handle = e.target.closest(".handle");
   if (handle){
+    if (handle.dataset.end === "from" || handle.dataset.end === "to"){
+      // Endpunkt eines gebundenen Pfeils: neu verbinden / Anker setzen / Richtung drehen
+      drag = { rebind: handle.dataset.id, end: handle.dataset.end, cur: w };
+      return;
+    }
     pushUndo();
     drag = { arrowEnd: handle.dataset.id, end: handle.dataset.end };
     return;
@@ -944,7 +1150,9 @@ stage.addEventListener("pointerdown", e => {
     const a = findArrow(arrowEl.dataset.id);
     if (!a) return;
     setAnnoSel({ type: "arrow", id: a.id });
-    drag = a.from ? null : { arrowMove: a.id, start: w, orig: { ...a }, moved: false };
+    drag = a.from ? null
+      : { arrowMove: a.id, start: w, moved: false,
+          orig: a.pts ? { pts: a.pts.map(q => [q[0], q[1]]) } : { ...a } };
     return;
   }
   const noteEl = e.target.closest(".note");
@@ -982,15 +1190,21 @@ stage.addEventListener("pointermove", e => {
     applyView();
     return;
   }
-  if (drag.bind || drag.arrowEnd || drag.arrowMove || drag.noteMove || drag.noteResize){
+  if (drag.bind || drag.rebind || drag.draw || drag.arrowEnd || drag.arrowMove || drag.noteMove || drag.noteResize){
     const w = toWorld(e.clientX, e.clientY);
-    if (drag.bind){
+    if (drag.bind || drag.rebind){
       drag.cur = w;
       renderAnno();
       nodesEl.querySelectorAll(".droptarget").forEach(el => el.classList.remove("droptarget"));
       const over = document.elementsFromPoint(e.clientX, e.clientY)
         .find(el => el.classList?.contains("node") || el.classList?.contains("note"));
-      if (over && over.dataset.id !== drag.bind.id) over.classList.add("droptarget");
+      if (over && (!drag.bind || over.dataset.id !== drag.bind.id)) over.classList.add("droptarget");
+      return;
+    }
+    if (drag.draw){
+      const last = drag.pts[drag.pts.length - 1];
+      if (Math.hypot(w.x - last[0], w.y - last[1]) > 4) drag.pts.push([w.x, w.y]);
+      renderAnno();
       return;
     }
     if (drag.arrowEnd){
@@ -1003,7 +1217,11 @@ stage.addEventListener("pointermove", e => {
     if (!drag.moved) return;
     if (drag.arrowMove){
       const a = findArrow(drag.arrowMove), o = drag.orig;
-      a.x1 = o.x1 + dx; a.y1 = o.y1 + dy; a.x2 = o.x2 + dx; a.y2 = o.y2 + dy;
+      if (a.pts){
+        a.pts = o.pts.map(q => [q[0] + dx, q[1] + dy]);
+      } else {
+        a.x1 = o.x1 + dx; a.y1 = o.y1 + dy; a.x2 = o.x2 + dx; a.y2 = o.y2 + dy;
+      }
     } else if (drag.noteMove){
       const nt = findNote(drag.noteMove);
       nt.x = drag.orig.x + dx; nt.y = drag.orig.y + dy;
@@ -1060,6 +1278,56 @@ stage.addEventListener("pointerup", e => {
     }
     setArrowMode(false);
     renderAnno(); return;
+  }
+  if (d.rebind){
+    nodesEl.querySelectorAll(".droptarget").forEach(el => el.classList.remove("droptarget"));
+    const a = findArrow(d.rebind);
+    if (a && a.from){
+      const endKey = d.end === "from" ? "from" : "to";
+      const anchorKey = d.end === "from" ? "fromAnchor" : "toAnchor";
+      const own = a[endKey], other = a[endKey === "from" ? "to" : "from"];
+      const w2 = toWorld(e.clientX, e.clientY);
+      const over = document.elementsFromPoint(e.clientX, e.clientY)
+        .find(el => el.classList?.contains("node") || el.classList?.contains("note"));
+      if (over && over.dataset.id === other.id){
+        // Auf das andere Ende gezogen: Pfeilrichtung umdrehen
+        pushUndo();
+        const f = a.from; a.from = a.to; a.to = f;
+        const fa = a.fromAnchor; a.fromAnchor = a.toAnchor; a.toAnchor = fa;
+        if (!a.fromAnchor) delete a.fromAnchor;
+        if (!a.toAnchor) delete a.toAnchor;
+      } else if (over && over.dataset.id !== own.id){
+        // Auf ein anderes Element gezogen: Ende dorthin umbinden
+        pushUndo();
+        a[endKey] = { type: over.classList.contains("node") ? "node" : "note", id: over.dataset.id };
+        delete a[anchorKey];
+      } else {
+        // In der Nähe des eigenen Elements abgelegt: Ankerpunkt am Rand fixieren
+        const rect = anchorRect(own);
+        if (rect && w2.x > rect.x - 30 && w2.x < rect.x + rect.w + 30 &&
+            w2.y > rect.y - 30 && w2.y < rect.y + rect.h + 30){
+          pushUndo();
+          a[anchorKey] = projectToBorder(rect, w2.x, w2.y);
+        }
+      }
+    }
+    renderAnno(); save();
+    return;
+  }
+  if (d.draw){
+    let len = 0;
+    for (let i = 1; i < d.pts.length; i++)
+      len += Math.hypot(d.pts[i][0] - d.pts[i-1][0], d.pts[i][1] - d.pts[i-1][1]);
+    if (d.pts.length > 2 && len > 24){
+      pushUndo();
+      const a = { id: uid(), style: "draw", pts: d.pts };
+      arrows.push(a);
+      setAnnoSel({ type: "arrow", id: a.id });
+      save();
+    }
+    setDrawMode(false);
+    renderAnno();
+    return;
   }
   if (d.arrowEnd || d.arrowMove || d.noteResize){ save(); return; }
   if (d.noteMove){
@@ -1245,44 +1513,6 @@ function drawArrowHead(ctx, x, y, ux, uy, color){
   ctx.closePath();
   ctx.fill();
 }
-function drawArrowLine(ctx, a, p, color){
-  const st = (a && a.style) || "straight";
-  const dx = p.x2 - p.x1, dy = p.y2 - p.y1, len = Math.hypot(dx, dy) || 1;
-  let endDir, startDir;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(p.x1, p.y1);
-  if (st === "curve"){
-    const bend = Math.min(60, len * 0.25);
-    const cx = (p.x1 + p.x2) / 2 - dy / len * bend;
-    const cy = (p.y1 + p.y2) / 2 + dx / len * bend;
-    ctx.quadraticCurveTo(cx, cy, p.x2, p.y2);
-    const l2 = Math.hypot(p.x2 - cx, p.y2 - cy) || 1;
-    endDir = [(p.x2 - cx) / l2, (p.y2 - cy) / l2];
-    const l1 = Math.hypot(p.x1 - cx, p.y1 - cy) || 1;
-    startDir = [(p.x1 - cx) / l1, (p.y1 - cy) / l1];
-  } else if (st === "elbow"){
-    if (Math.abs(dy) >= Math.abs(dx)){
-      const my = (p.y1 + p.y2) / 2;
-      ctx.lineTo(p.x1, my); ctx.lineTo(p.x2, my); ctx.lineTo(p.x2, p.y2);
-      endDir = [0, Math.sign(p.y2 - my) || 1];
-      startDir = [0, Math.sign(p.y1 - my) || -1];
-    } else {
-      const mx = (p.x1 + p.x2) / 2;
-      ctx.lineTo(mx, p.y1); ctx.lineTo(mx, p.y2); ctx.lineTo(p.x2, p.y2);
-      endDir = [Math.sign(p.x2 - mx) || 1, 0];
-      startDir = [Math.sign(p.x1 - mx) || -1, 0];
-    }
-  } else {
-    ctx.lineTo(p.x2, p.y2);
-    endDir = [dx / len, dy / len];
-    startDir = [-dx / len, -dy / len];
-  }
-  ctx.stroke();
-  drawArrowHead(ctx, p.x2, p.y2, endDir[0], endDir[1], color);
-  if (a && a.both) drawArrowHead(ctx, p.x1, p.y1, startDir[0], startDir[1], color);
-}
 function exportPng(){
   const cs = getComputedStyle(document.documentElement);
   const v = name => cs.getPropertyValue(name).trim();
@@ -1321,7 +1551,8 @@ function exportPng(){
       n.children.forEach(c => {
         const q = nodeRects.get(c.id);
         if (p && q){
-          const x1 = p.x + p.w / 2, x2 = q.x + q.w / 2;
+          const frac = n.partner ? (c.of === "a" ? 0.25 : c.of === "b" ? 0.75 : 0.5) : 0.5;
+          const x1 = p.x + p.w * frac, x2 = q.x + q.w / 2;
           const y1 = up ? p.y : p.y + p.h;
           const y2 = up ? q.y + q.h : q.y;
           const my = y1 + (y2 - y1) / 2;
@@ -1399,11 +1630,24 @@ function exportPng(){
 
   // 4) Pfeile
   const accent = v("--accent");
-  arrows.forEach(a => {
-    let p;
-    if (a.from){ p = arrowPoints(a); if (!p) return; }
-    else p = { x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2 };
-    drawArrowLine(ctx, a, p, accent);
+  arrowShapes().forEach(s => {
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(s.pts[0][0], s.pts[0][1]);
+    for (let i = 1; i < s.pts.length; i++) ctx.lineTo(s.pts[i][0], s.pts[i][1]);
+    ctx.stroke();
+    const L = s.pts.length;
+    if (s.headEnd && L > 1){
+      const [ax, ay] = s.pts[L-2], [bx, by] = s.pts[L-1];
+      const dl = Math.hypot(bx - ax, by - ay) || 1;
+      drawArrowHead(ctx, bx, by, (bx - ax) / dl, (by - ay) / dl, accent);
+    }
+    if (s.headStart && L > 1){
+      const [ax, ay] = s.pts[1], [bx, by] = s.pts[0];
+      const dl = Math.hypot(bx - ax, by - ay) || 1;
+      drawArrowHead(ctx, bx, by, (bx - ax) / dl, (by - ay) / dl, accent);
+    }
   });
 
   const dataUrl = canvas.toDataURL("image/png");
@@ -1425,6 +1669,16 @@ $("bAddTree").addEventListener("click", addTree);
 $("bFlip").addEventListener("click", flipTree);
 $("bNote").addEventListener("click", addNote);
 $("bArrow").addEventListener("click", () => setArrowMode(!arrowMode));
+$("bDraw").addEventListener("click", () => setDrawMode(!drawMode));
+document.querySelectorAll("#childOf .mini").forEach(b => {
+  b.addEventListener("click", () => {
+    const n = selectedId ? findNode(selectedId) : null;
+    if (!n) return;
+    pushUndo();
+    if (b.dataset.of) n.of = b.dataset.of; else delete n.of;
+    render(); save();
+  });
+});
 $("bUndo").addEventListener("click", undo);
 $("bFit").addEventListener("click", fitView);
 $("bPng").addEventListener("click", exportPng);
